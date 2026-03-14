@@ -1,0 +1,20 @@
+[
+  {
+    "guid": "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21",
+    "name": "Jellyfin Graveyard Analytics",
+    "description": "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and track your active Visitors.",
+    "overview": "Advanced storage reclamation and user analytics.",
+    "owner": "jackwander",
+    "category": "Analytics",
+    "versions": [
+      {
+        "version": "1.0.0.0",
+        "changelog": "Initial Release: Opening the gates to Graveyard Analytics v1.0.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/JellyfinGraveyardAnalytics.zip",
+        "checksum": "8dd354b9f88206966bec8c52395e14a9",
+        "timestamp": "2026-03-14T00:00:00Z"
+      }
+    ]
+  }
+]

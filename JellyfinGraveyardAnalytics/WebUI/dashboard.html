@@ -1,0 +1,383 @@
+<div id="AnalyticsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button">
+    <div class="content-primary">
+        <div class="verticalSection">
+
+            <div style="border-bottom: 2px solid #333; margin-bottom: 20px; display: flex; gap: 20px;">
+                <button id="tabLiving" class="graveyard-tab" onclick="window.switchTab('living')">The Sanctuary (Living)</button>
+                <button id="tabMorgue" class="graveyard-tab active-tab" onclick="window.switchTab('morgue')">The Morgue (Unwatched)</button>
+                <button id="tabChapel" class="graveyard-tab" onclick="window.switchTab('chapel')">The Chapel (Condemned)</button>
+                <button id="tabVisitors" class="graveyard-tab" onclick="window.switchTab('visitors')" style="color: #4CAF50;">The Guestbook (Visitors)</button>
+            </div>
+
+            <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px; margin-bottom: 30px;">
+                <div style="margin-bottom: 30px;">
+                    <h1 id="pageMainTitle" style="margin-bottom: 5px; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; letter-spacing: 1px;">THE GRAVEYARD</h1>
+                    <p id="pageDescription" style="color: #888; margin: 0; font-style: italic;">Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.</p>
+                </div>
+
+                <div id="mediaTopCard" style="background: linear-gradient(135deg, #2c3e50 0%, #000000 100%); border-left: 5px solid #666; color: white; padding: 20px; border-radius: 4px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                    <div>
+                        <span id="totalWastedTitle" style="display: block; font-size: 0.9em; text-transform: uppercase; color: #aaa; letter-spacing: 2px;">Total Dead Weight</span>
+                        <span id="totalWasteValue" style="font-size: 2.5em; font-weight: bold; font-family: monospace;">0 GB</span>
+                    </div>
+                    <div style="text-align: right;">
+                        <span style="display: block; font-size: 0.8em; color: #888;">Stagnant since installation</span>
+                    </div>
+                </div>
+
+                <div id="visitorSummary" style="display: none; gap: 20px; margin-bottom: 25px;">
+                    <div style="flex: 1; background: linear-gradient(135deg, #1e3c20 0%, #000000 100%); padding: 15px; border-radius: 6px; border-left: 5px solid #4CAF50; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                        <h3 style="margin: 0 0 10px 0; color: #e0e0e0; text-transform: uppercase; font-size: 0.9em; letter-spacing: 1px;">Top Visitors (The Binge List)</h3>
+                        <ul id="leaderboardList" style="margin: 0; padding-left: 20px; color: #aaa; font-size: 0.95em;"></ul>
+                    </div>
+                    <div style="flex: 1; background: linear-gradient(135deg, #3c1e1e 0%, #000000 100%); padding: 15px; border-radius: 6px; border-left: 5px solid #cf6679; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                        <h3 style="margin: 0 0 10px 0; color: #e0e0e0; text-transform: uppercase; font-size: 0.9em; letter-spacing: 1px;">The Ghosts (No Activity)</h3>
+                        <p id="ghostsList" style="margin: 0; color: #aaa; font-style: italic; font-size: 0.95em;"></p>
+                    </div>
+                </div>
+
+                <div id="mediaFilters" style="margin-bottom: 15px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
+                    <input type="text" id="mediaSearch" placeholder="Search by name..." style="padding: 5px 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; flex-grow: 1;">
+                    <div>
+                        <label for="mediaTypeFilter">Type:</label>
+                        <select id="mediaTypeFilter" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                            <option value="All">All Media</option>
+                            <option value="Movie" selected>Movies</option>
+                            <option value="Series">Shows</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="limitFilter">Show Top:</label>
+                        <select id="limitFilter" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                            <option value="10" selected>10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="visitorFilters" style="display: none; margin-bottom: 15px; align-items: center; gap: 20px; flex-wrap: wrap;">
+                    <div>
+                        <label for="visitorEndDate" style="color: #aaa; margin-right: 5px;">End Date:</label>
+                        <input type="date" id="visitorEndDate" style="padding: 5px 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                    </div>
+                    <div>
+                        <label for="visitorWeeksBack" style="color: #aaa; margin-right: 5px;">Timeframe:</label>
+                        <select id="visitorWeeksBack" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                            <option value="1" selected>Past 1 Week</option>
+                            <option value="2">Past 2 Weeks</option>
+                            <option value="4">Past 4 Weeks</option>
+                            <option value="8">Past 8 Weeks</option>
+                            <option value="12">Past 12 Weeks</option>
+                        </select>
+                    </div>
+                    <div style="flex-grow: 1; text-align: right;">
+                        <span style="color: #888; font-style: italic; font-size: 0.85em;">Listing all sessions (incl. false starts)</span>
+                    </div>
+                </div>
+
+                <div id="mediaTableContainer" style="background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
+                                <th style="padding: 12px 10px;">Subject (Title)</th>
+                                <th style="padding: 12px 10px;">Type</th>
+                                <th style="padding: 12px 10px;">Size</th>
+                                <th style="padding: 12px 10px;">Plays</th>
+                                <th style="padding: 12px 10px;">Time Played</th>
+                                <th style="padding: 12px 10px;">Reach</th>
+                                <th style="padding: 12px 10px;">Time of Death</th>
+                                <th style="padding: 15px 10px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="leastWatchedTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="visitorTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
+                                <th style="padding: 12px 10px;">Time</th>
+                                <th style="padding: 12px 10px; color: #4CAF50;">Visitor</th>
+                                <th style="padding: 12px 10px;">Subject</th>
+                                <th style="padding: 12px 10px;">Device / Client</th>
+                                <th style="padding: 12px 10px;">Method</th>
+                                <th style="padding: 12px 10px;">Duration</th>
+                            </tr>
+                        </thead>
+                        <tbody id="visitorTableBody"></tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .exorcise-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #444;
+            color: #888;
+            padding: 6px 12px;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 0.85em;
+            transition: all 0.2s ease-in-out;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .exorcise-btn:hover {
+            background: #aa2e25 !important;
+            color: white !important;
+            border-color: #f44336 !important;
+            box-shadow: 0 0 10px rgba(244, 67, 54, 0.4);
+            transform: translateY(-1px);
+        }
+
+        .graveyard-tab {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.1em;
+            padding: 10px 15px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+
+        .graveyard-tab:hover { color: #e0e0e0; }
+
+        .active-tab {
+            color: #cf6679;
+            font-weight: bold;
+            border-bottom: 2px solid #cf6679;
+        }
+    </style>
+
+    <script>
+        (function() {
+            window.currentTab = 'morgue';
+
+            // Set default date for Visitor Tab to Today
+            var today = new Date();
+            var dd = String(today.getDate()).padStart(2, '0');
+            var mm = String(today.getMonth() + 1).padStart(2, '0');
+            var yyyy = today.getFullYear();
+            document.getElementById('visitorEndDate').value = yyyy + '-' + mm + '-' + dd;
+
+            // TAB SWITCHING LOGIC
+            window.switchTab = function(tabName) {
+                window.currentTab = tabName;
+
+                // Reset Tabs
+                document.getElementById('tabLiving').classList.remove('active-tab');
+                document.getElementById('tabMorgue').classList.remove('active-tab');
+                document.getElementById('tabChapel').classList.remove('active-tab');
+                document.getElementById('tabVisitors').classList.remove('active-tab');
+
+                // UI Elements to toggle
+                var mediaTopCard = document.getElementById('mediaTopCard');
+                var mediaFilters = document.getElementById('mediaFilters');
+                var mediaTableContainer = document.getElementById('mediaTableContainer');
+
+                var visitorSummary = document.getElementById('visitorSummary');
+                var visitorFilters = document.getElementById('visitorFilters');
+                var visitorTableContainer = document.getElementById('visitorTableContainer');
+
+                var pageTitle = document.getElementById('pageMainTitle');
+                var pageDesc = document.getElementById('pageDescription');
+
+                if (tabName === 'visitors') {
+                    document.getElementById('tabVisitors').classList.add('active-tab');
+
+                    mediaTopCard.style.display = 'none';
+                    mediaFilters.style.display = 'none';
+                    mediaTableContainer.style.display = 'none';
+
+                    visitorSummary.style.display = 'flex';
+                    visitorFilters.style.display = 'flex';
+                    visitorTableContainer.style.display = 'block';
+
+                    pageTitle.innerText = "THE GUESTBOOK";
+                    pageDesc.innerText = "Monitor server traffic, review playback sessions, and track the lingering ghosts.";
+                } else {
+                    mediaTopCard.style.display = 'flex';
+                    mediaFilters.style.display = 'flex';
+                    mediaTableContainer.style.display = 'block';
+
+                    visitorSummary.style.display = 'none';
+                    visitorFilters.style.display = 'none';
+                    visitorTableContainer.style.display = 'none';
+
+                    pageTitle.innerText = "THE GRAVEYARD";
+                    pageDesc.innerText = "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.";
+
+                    if (tabName === 'living') document.getElementById('tabLiving').classList.add('active-tab');
+                    if (tabName === 'morgue') document.getElementById('tabMorgue').classList.add('active-tab');
+                    if (tabName === 'chapel') document.getElementById('tabChapel').classList.add('active-tab');
+                }
+
+                window.fetchAndRenderTable();
+            };
+
+            // ACTIONS
+            window.condemnSubject = function(id, name, btnElement) {
+                if (confirm('Move "' + name + '" to The Chapel?')) {
+                    var row = btnElement.closest('tr');
+                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('Analytics/Condemn/' + id) }).then(function() {
+                        row.style.transition = 'all 0.5s ease'; row.style.opacity = '0'; row.style.transform = 'translateX(50px)';
+                        setTimeout(window.fetchAndRenderTable, 500);
+                    });
+                }
+            };
+            window.pardonSubject = function(id, name, btnElement) {
+                if (confirm('Pardon "' + name + '"?')) {
+                    var row = btnElement.closest('tr');
+                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('Analytics/Pardon/' + id) }).then(function() {
+                        row.style.transition = 'all 0.5s ease'; row.style.opacity = '0'; row.style.transform = 'translateX(-50px)';
+                        setTimeout(window.fetchAndRenderTable, 500);
+                    });
+                }
+            };
+            window.performLastRites = function(id, name, btnElement) {
+                if (confirm('Permanently delete "' + name + '" from your storage?')) {
+                    var row = btnElement.closest('tr');
+                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('Analytics/LastRites/' + id) }).then(function() {
+                        row.style.background = 'rgba(170, 46, 37, 0.3)'; row.style.opacity = '0';
+                        setTimeout(window.fetchAndRenderTable, 500);
+                    });
+                }
+            };
+
+            var view = document.getElementById('AnalyticsPage');
+
+            view.addEventListener('viewshow', function () {
+
+                // RENDER VISITOR TABLE
+                window.renderVisitorTable = function(data) {
+                    // Populate Leaderboard
+                    var leaderboardHtml = '';
+                    data.Leaderboard.forEach(function(l) {
+                        leaderboardHtml += '<li style="margin-bottom: 5px;"><strong>' + l.Name + '</strong> - ' + l.TotalTime + '</li>';
+                    });
+                    document.getElementById('leaderboardList').innerHTML = leaderboardHtml || '<li>No active visitors in this timeframe.</li>';
+
+                    // Populate Ghosts
+                    var ghostsText = data.Ghosts.length > 0 ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
+                    document.getElementById('ghostsList').innerText = ghostsText;
+
+                    // Populate Table
+                    var tbody = document.getElementById('visitorTableBody');
+                    tbody.innerHTML = '';
+
+                    data.Sessions.forEach(function(session) {
+                        var tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid #333';
+
+                        // Highlight Transcodes in Red
+                        var methodColor = session.IsTranscode ? '#cf6679' : '#888';
+                        var methodWeight = session.IsTranscode ? 'bold' : 'normal';
+
+                        tr.innerHTML =
+                          '<td style="padding: 12px 10px; color: #aaa; font-size: 0.9em;">' + session.Time + '</td>' +
+                          '<td style="padding: 12px 10px; color: #e0e0e0; font-weight: bold;">' + session.Visitor + '</td>' +
+                          '<td style="padding: 12px 10px; color: #fff;">' + session.Subject + '<br><span style="font-size:0.8em; color:#666;">' + session.Type + '</span></td>' +
+                          '<td style="padding: 12px 10px; color: #aaa;">' + session.Device + '<br><span style="font-size:0.8em; color:#666;">' + session.Client + '</span></td>' +
+                          '<td style="padding: 12px 10px; color: ' + methodColor + '; font-weight: ' + methodWeight + ';">' + session.Method + '</td>' +
+                          '<td style="padding: 12px 10px; font-family: monospace; color: #aaa;">' + session.Duration + '</td>';
+
+                        tbody.appendChild(tr);
+                    });
+                };
+
+                // RENDER MEDIA TABLE
+                window.renderMediaTable = function(items) {
+                    var tbody = document.getElementById('leastWatchedTableBody');
+                    tbody.innerHTML = '';
+                    items.forEach(function(item) {
+                        var tr = document.createElement('tr');
+                        tr.style.borderBottom = '1px solid #333';
+                        var playCountColor = item.PlayCount === 0 ? '#cf6679' : '#888';
+                        var nameWeight = item.PlayCount === 0 ? 'bold' : 'normal';
+                        var baseUrl = window.parent.location.origin + window.parent.location.pathname;
+                        var itemUrl = baseUrl + '#/details?id=' + item.MediaId;
+                        var twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+                        var isDead = false; var dateText = "Never";
+
+                        if (item.LastPlayed) {
+                            var lpDate = new Date(item.LastPlayed);
+                            dateText = lpDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+                            if (lpDate < twelveMonthsAgo) isDead = true;
+                        } else { isDead = true; }
+                        var timeOfDeathColor = isDead ? '#cf6679' : '#aaa';
+
+                        var actionButtons = (window.currentTab === 'living' || window.currentTab === 'morgue') ?
+                            '<button onclick="window.condemnSubject(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn" style="border-color: #ff9800; color: #ff9800;">Condemn</button>' :
+                            '<button onclick="window.pardonSubject(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn" style="border-color: #4CAF50; color: #4CAF50; margin-right: 5px;">Pardon</button>' +
+                            '<button onclick="window.performLastRites(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn">Exorcise</button>';
+
+                        tr.innerHTML =
+                          '<td style="padding: 15px 10px;"><a href="' + itemUrl + '" target="_top" style="color: #e0e0e0; font-weight: ' + nameWeight + '; text-decoration: none; border-bottom: 1px dashed #444;">' + item.Name + '</a></td>' +
+                          '<td style="padding: 15px 10px; color: #aaa;">' + item.Type + '</td>' +
+                          '<td style="padding: 15px 10px; font-family: monospace; color: #aaa;">' + item.FormattedSize + '</td>' +
+                          '<td style="padding: 15px 10px; color: ' + playCountColor + ';">' + item.PlayCount + '</td>' +
+                          '<td style="padding: 15px 10px; color: #888; font-family: monospace;">' + (item.FormattedDuration || '00:00:00') + '</td>' +
+                          '<td style="padding: 15px 10px; color: ' + (item.UniqueViewers === 1 ? '#ff9800' : '#aaa') + ';">' + item.UniqueViewers + ' <span style="font-size:0.8em; color:#555;">Souls</span></td>' +
+                          '<td style="padding: 15px 10px; color: ' + timeOfDeathColor + '; font-style: ' + (isDead ? 'italic' : 'normal') + ';">' + dateText + '</td>' +
+                          '<td style="padding: 10px; text-align: center; white-space: nowrap;">' + actionButtons + '</td>';
+                        tbody.appendChild(tr);
+                    });
+                };
+
+                // MAIN FETCH LOGIC
+                window.fetchAndRenderTable = function() {
+                    if (window.currentTab === 'visitors') {
+                        var endDate = document.getElementById('visitorEndDate').value;
+                        var weeksBack = document.getElementById('visitorWeeksBack').value;
+                        var endpoint = 'Analytics/Visitors?endDate=' + endDate + '&weeksBack=' + weeksBack;
+
+                        ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
+                            window.renderVisitorTable(data);
+                        });
+                    } else {
+                        var type = document.getElementById('mediaTypeFilter').value;
+                        var limit = document.getElementById('limitFilter').value;
+                        var text = document.getElementById('mediaSearch').value;
+                        var encodedText = encodeURIComponent(text);
+
+                        var endpoint = '';
+                        if (window.currentTab === 'living') endpoint = 'Analytics/Living?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+                        else if (window.currentTab === 'morgue') endpoint = 'Analytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+                        else endpoint = 'Analytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+
+                        ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
+                            var headerLabel = window.currentTab === 'living' ? "Total Size of Living Media" : "Total Dead Weight";
+                            document.getElementById('totalWastedTitle').innerText = headerLabel;
+                            document.getElementById('totalWasteValue').innerText = data.TotalWastedSize;
+                            window.renderMediaTable(data.Items);
+                        });
+                    }
+                };
+
+                // EVENT LISTENERS
+                var searchTimeout = null;
+                document.getElementById('mediaSearch').addEventListener('input', function(e) {
+                    if (searchTimeout) clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(window.fetchAndRenderTable, 500); // reduced to 500ms
+                });
+
+                document.getElementById('mediaTypeFilter').addEventListener('change', window.fetchAndRenderTable);
+                document.getElementById('limitFilter').addEventListener('change', window.fetchAndRenderTable);
+                document.getElementById('visitorEndDate').addEventListener('change', window.fetchAndRenderTable);
+                document.getElementById('visitorWeeksBack').addEventListener('change', window.fetchAndRenderTable);
+
+                // Initial load
+                window.fetchAndRenderTable();
+            });
+        })();
+    </script>
+</div>
