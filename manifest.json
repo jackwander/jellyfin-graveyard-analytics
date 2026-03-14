@@ -6,6 +6,7 @@
     "overview": "Advanced storage reclamation and user analytics.",
     "owner": "jackwander",
     "category": "Analytics",
+    "imageUrl": "https://cdn.jsdelivr.net/gh/jackwander/jellyfin-graveyard-analytics@master/images/header.png",
     "versions": [
       {
         "version": "1.0.0.0",
