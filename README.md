@@ -4,7 +4,7 @@
   <img alt="Plugin Banner" src="https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/header.png" />
 </p>
 <a href="https://github.com/jackwander/jellyfin-graveyard-analytics/releases">
-<img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/jackwander/jellyfin-graveyard-analytics/total?label=github%20downloads"/>
+<img alt="GitHub Downloads" src="https://img.shields.io/github/downloads/jackwander/jellyfin-graveyard-analytics/total?label=Github%20Downloads"/>
 </a>
 <p><b>Manage your server's afterlife.</b> Graveyard Analytics is a powerful, real-time dashboard and server-management plugin for Jellyfin (v10.11+). It identifies lifeless media, tracks your active users, highlights server bottlenecks, and allows you to permanently exorcise dead weight from your hard drives.</p>
 <p>Stop guessing what your users are watching, and start reclaiming your storage space.</p>
