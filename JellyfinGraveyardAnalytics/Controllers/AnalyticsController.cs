@@ -1,3 +1,12 @@
+/*
+ * -----------------------------------------------------------------------
+ * Spectral Assistant Disclosure:
+ * This file contains C# logic optimized with the assistance of AI.
+ * AI was used specifically for code refinement and .NET 9 compatibility.
+ * All logic has been reviewed, tested, and verified by the maintainer.
+ * -----------------------------------------------------------------------
+ */
+
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
 using JellyfinAnalyticsPlugin.Services;
@@ -6,6 +15,8 @@ using MediaBrowser.Controller.Collections;
 using Microsoft.Extensions.Logging;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Net.Http;
+using MediaBrowser.Controller.Providers;
 
 namespace JellyfinAnalyticsPlugin.Controllers
 {
@@ -18,13 +29,17 @@ namespace JellyfinAnalyticsPlugin.Controllers
         private readonly ILogger<AnalyticsController> _logger;
         private readonly ICollectionManager _collectionManager;
         private readonly IUserManager _userManager;
+        private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IProviderManager _providerManager;
 
-        public AnalyticsController(ILibraryManager libraryManager, ILogger<AnalyticsController> logger, ICollectionManager collectionManager, IUserManager userManager)
+        public AnalyticsController(ILibraryManager libraryManager, ILogger<AnalyticsController> logger, ICollectionManager collectionManager, IUserManager userManager, IHttpClientFactory httpClientFactory, IProviderManager providerManager)
         {
             _libraryManager = libraryManager;
             _logger = logger;
             _collectionManager = collectionManager;
             _userManager = userManager;
+            _httpClientFactory = httpClientFactory;
+            _providerManager = providerManager;
         }
 
         [HttpGet("LeastWatched")]
@@ -39,7 +54,6 @@ namespace JellyfinAnalyticsPlugin.Controllers
             }
             var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
 
-            // FIX: Pass 'limit' into the service call here!
             return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit));
         }
 
@@ -53,15 +67,11 @@ namespace JellyfinAnalyticsPlugin.Controllers
 
                 _logger.LogWarning("Performing Last Rites for: {0} ({1})", item.Name, item.Path);
 
-                // Define options with only the core requirement
                 var options = new MediaBrowser.Controller.Library.DeleteOptions
                 {
                     DeleteFileLocation = true
-                    // We removed NotifyChange because it's either named differently
-                    // or handled by the third parameter in the method call below.
                 };
 
-                // Signature: DeleteItem(BaseItem item, DeleteOptions options, bool notifyObservers)
                 _libraryManager.DeleteItem(item, options, true);
 
                 return Ok(new { message = "Subject has been laid to rest." });
@@ -113,33 +123,70 @@ namespace JellyfinAnalyticsPlugin.Controllers
                     var parentItem = item.ParentId != Guid.Empty ? _libraryManager.GetItemById(item.ParentId) : null;
                     await _libraryManager.UpdateItemAsync(item, parentItem!, MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit, CancellationToken.None);
 
-                    // --- THE NEW COLLECTION LOGIC ---
-                    // 1. Find the Chapel Collection (or create it if it doesn't exist)
                     var chapelCollection = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
                     {
                         IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.BoxSet },
                         Name = "Leaving Soon: The Chapel"
-                    }).FirstOrDefault();
+                    }).FirstOrDefault() as MediaBrowser.Controller.Entities.Movies.BoxSet;
 
                     if (chapelCollection == null)
                     {
-                        // Create the collection
-                        chapelCollection = await _collectionManager.CreateCollectionAsync(new CollectionCreationOptions
+                        chapelCollection = await _collectionManager.CreateCollectionAsync(new MediaBrowser.Controller.Collections.CollectionCreationOptions
                         {
                             Name = "Leaving Soon: The Chapel",
                             IsLocked = false
-                        });
+                        }).ConfigureAwait(false) as MediaBrowser.Controller.Entities.Movies.BoxSet;
 
-                        // NEW: Inject the thematic overview warning
-                        chapelCollection.Overview = "Welcome to The Chapel. The media gathered here has been condemned due to severe neglect. These titles have sat unwatched, taking up valuable server space, and are currently awaiting their Last Rites. If you wish to save a title from permanent deletion, you must watch it immediately. Once the grace period ends, these files will be exorcised from the server forever.";
+                        if (chapelCollection != null)
+                        {
+                            chapelCollection.Overview = "Welcome to The Chapel. The media gathered here has been condemned due to severe neglect. These titles have sat unwatched, taking up valuable server space, and are currently awaiting their Last Rites. If you wish to save a title from permanent deletion, you must watch it immediately. Once the grace period ends, these files will be exorcised from the server forever.";
 
-                        // NEW: Save the overview to the Jellyfin database
-                        var collectionParent = chapelCollection.ParentId != Guid.Empty ? _libraryManager.GetItemById(chapelCollection.ParentId) : null;
-                        await _libraryManager.UpdateItemAsync(chapelCollection, collectionParent!, MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit, CancellationToken.None);
+                            var parent = _libraryManager.GetItemById(chapelCollection.ParentId) ?? chapelCollection.GetParent() ?? _libraryManager.RootFolder;
+
+                            await _libraryManager.UpdateItemAsync(
+                                chapelCollection,
+                                parent,
+                                MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit,
+                                CancellationToken.None
+                            ).ConfigureAwait(false);
+                        }
                     }
 
-                    // 2. Add the item to the collection
-                    await _collectionManager.AddToCollectionAsync(chapelCollection.Id, new[] { item.Id });
+                    // --- IMAGE LOGIC ---
+                    if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Primary, 0))
+                    {
+                        try
+                        {
+                            var imageUrl = "https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollection.png";
+                            using var httpClient = _httpClientFactory.CreateClient();
+                            using var response = await httpClient.GetAsync(imageUrl).ConfigureAwait(false);
+
+                            if (response.IsSuccessStatusCode && response.Content is not null)
+                            {
+                                using var imageStream = await response.Content!.ReadAsStreamAsync().ConfigureAwait(false);
+                                if (imageStream is not null)
+                                {
+                                    await _providerManager.SaveImage(
+                                        chapelCollection!,
+                                        imageStream,
+                                        "image/png",
+                                        MediaBrowser.Model.Entities.ImageType.Primary,
+                                        null,
+                                        CancellationToken.None
+                                    ).ConfigureAwait(false);
+                                }
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to set default artwork.");
+                        }
+                    }
+
+                    if (chapelCollection != null)
+                    {
+                        await _collectionManager.AddToCollectionAsync(chapelCollection.Id, new[] { item.Id });
+                    }
                 }
 
                 return Ok(new { message = "Subject condemned to The Chapel." });
@@ -170,7 +217,6 @@ namespace JellyfinAnalyticsPlugin.Controllers
                     var parentItem = item.ParentId != Guid.Empty ? _libraryManager.GetItemById(item.ParentId) : null;
                     await _libraryManager.UpdateItemAsync(item, parentItem!, MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit, CancellationToken.None);
 
-                    // --- REMOVE FROM COLLECTION LOGIC ---
                     var chapelCollection = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
                     {
                         IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.BoxSet },
@@ -214,7 +260,6 @@ namespace JellyfinAnalyticsPlugin.Controllers
             }
             try
             {
-                // Pass the new _userManager into the Service
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetVisitorActivity(endDate, weeksBack));
             }

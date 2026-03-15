@@ -80,7 +80,6 @@ namespace JellyfinAnalyticsPlugin.Database
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
-            // THE FIX: We added 'AND PlayDuration >= 120' to filter out false starts
             var results = Dapper.SqlMapper.Query(connection, @"
                 SELECT ItemId, COUNT(*) as PlayCount
                 FROM PlaybackActivity
@@ -107,8 +106,6 @@ namespace JellyfinAnalyticsPlugin.Database
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
-            // We fetch every unique combination of Item and User.
-            // Dapper makes this lightning fast.
             var results = Dapper.SqlMapper.Query(connection, @"
                 SELECT ItemId, UserId
                 FROM PlaybackActivity
@@ -124,7 +121,6 @@ namespace JellyfinAnalyticsPlugin.Database
 
                 if (!string.IsNullOrEmpty(itemId) && !string.IsNullOrEmpty(userId))
                 {
-                    // Strip hyphens so it perfectly matches the .ToString("N") format used in your Service
                     string cleanItemId = itemId.Replace("-", "");
 
                     if (!viewerMap.ContainsKey(cleanItemId))
@@ -132,7 +128,6 @@ namespace JellyfinAnalyticsPlugin.Database
                         viewerMap[cleanItemId] = new System.Collections.Generic.HashSet<string>();
                     }
 
-                    // HashSet automatically prevents duplicate UserIds for the same ItemId
                     viewerMap[cleanItemId].Add(userId);
                 }
             }
@@ -144,7 +139,6 @@ namespace JellyfinAnalyticsPlugin.Database
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
-            // Dapper easily handles the MAX() aggregate function to find the most recent date
             var results = Dapper.SqlMapper.Query(connection, @"
                 SELECT ItemId, MAX(DateCreated) as LastPlayedDate
                 FROM PlaybackActivity
@@ -159,7 +153,6 @@ namespace JellyfinAnalyticsPlugin.Database
                 string itemId = row.ItemId?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(itemId) && row.LastPlayedDate != null)
                 {
-                    // Parse the date string saved by Playback Reporting
                     if (System.DateTime.TryParse(row.LastPlayedDate.ToString(), out System.DateTime parsedDate))
                     {
                         dict[itemId.Replace("-", "")] = parsedDate;
@@ -174,7 +167,6 @@ namespace JellyfinAnalyticsPlugin.Database
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
-            // Sum up the PlayDuration column for each ItemId
             var results = Dapper.SqlMapper.Query(connection, @"
                 SELECT ItemId, SUM(PlayDuration) as TotalDuration
                 FROM PlaybackActivity
@@ -189,7 +181,6 @@ namespace JellyfinAnalyticsPlugin.Database
                 string itemId = row.ItemId?.ToString() ?? "";
                 if (!string.IsNullOrEmpty(itemId) && row.TotalDuration != null)
                 {
-                    // PlaybackReporting stores this in seconds
                     dict[itemId.Replace("-", "")] = (long)row.TotalDuration;
                 }
             }

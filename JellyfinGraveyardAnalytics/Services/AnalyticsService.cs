@@ -30,10 +30,8 @@ namespace JellyfinAnalyticsPlugin.Services
         {
             var playCounts = _repository.GetItemPlayCounts();
 
-            // Fetch our dictionary mapping MediaId to a Set of UserIds
             var itemViewers = _repository.GetItemViewers();
 
-            // Fetch our dictionary mapping MediaId to the most recent DateCreated
             var lastPlayedDates = _repository.GetItemLastPlayedDates();
 
             var kindList = new List<Jellyfin.Data.Enums.BaseItemKind>();
@@ -193,7 +191,6 @@ namespace JellyfinAnalyticsPlugin.Services
                 Tags = new[] { "[Chapel]" }
             };
 
-            // 1. You can pass the search term directly to Jellyfin's database query
             if (!string.IsNullOrWhiteSpace(mediaSearch))
             {
                 query.SearchTerm = mediaSearch;
@@ -330,7 +327,6 @@ namespace JellyfinAnalyticsPlugin.Services
                     if (lastPlayedDates.TryGetValue(formattedId, out var mDate)) lastPlayed = mDate;
                 }
 
-                // REQUIREMENT: Only calculate movies/series actually watched >= 1
                 if (totalPlays == 0) return null;
 
                 var ts = System.TimeSpan.FromSeconds(totalDurationSeconds);
@@ -355,12 +351,10 @@ namespace JellyfinAnalyticsPlugin.Services
             .Cast<JellyfinAnalyticsPlugin.Models.LeastWatchedItem>()
             .ToList();
 
-            // REQUIREMENT: Sum the size of ONLY the mapped items (Plays >= 1)
             long totalLivingSize = mappedItems.Sum(x => x.Size);
 
             return new JellyfinAnalyticsPlugin.Models.LeastWatchedResponse
             {
-                // REQUIREMENT: Sort ONLY by PlayCount descending
                 Items = mappedItems
                     .OrderByDescending(x => x.PlayCount)
                     .Take(limit)
@@ -372,22 +366,18 @@ namespace JellyfinAnalyticsPlugin.Services
 
         public JellyfinAnalyticsPlugin.Models.VisitorResponse GetVisitorActivity(string endDateString, int weeksBack)
         {
-            // 1. Handle Date Logic (End Date -> Go back X weeks)
             if (!System.DateTime.TryParse(endDateString, out System.DateTime endDate))
             {
                 endDate = System.DateTime.UtcNow;
             }
-            // Ensure the end date covers the very end of the selected day
             endDate = endDate.Date.AddDays(1).AddTicks(-1);
             System.DateTime startDate = endDate.AddDays(-7 * weeksBack).Date;
 
-            // 2. Fetch all Jellyfin Users (The Living and the Ghosts)
             var allUsers = _userManager.Users.ToList();
             var userDictionary = allUsers.ToDictionary(u => u.Id.ToString("N"), u => u.Username);
             var activeUserIds = new HashSet<string>();
             var userWatchTimes = new Dictionary<string, long>();
 
-            // 3. Fetch Raw Data from SQLite
             var rawData = _repository.GetRawPlaybackActivity(startDate, endDate);
 
             var sessions = new List<JellyfinAnalyticsPlugin.Models.VisitorSession>();
@@ -401,7 +391,6 @@ namespace JellyfinAnalyticsPlugin.Services
 
                 long durationSeconds = row.PlayDuration != null ? (long)row.PlayDuration : 0;
 
-                // Add to leaderboard total
                 if (!userWatchTimes.ContainsKey(visitorName)) userWatchTimes[visitorName] = 0;
                 userWatchTimes[visitorName] += durationSeconds;
 
@@ -425,13 +414,11 @@ namespace JellyfinAnalyticsPlugin.Services
                 });
             }
 
-            // 4. Calculate The Ghosts (Users who exist but didn't watch anything in this timeframe)
             var ghosts = allUsers
                 .Where(u => !activeUserIds.Contains(u.Id.ToString("N")))
                 .Select(u => u.Username)
                 .ToList();
 
-            // 5. Calculate The Leaderboard (Top 3 Binge Watchers)
             var leaderboard = userWatchTimes
                 .OrderByDescending(kvp => kvp.Value)
                 .Take(3)

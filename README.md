@@ -45,7 +45,11 @@ Celebrate the living. The Sanctuary displays only the media that your users are 
 <img alt="the-chapel" src="https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapel.png" loading="lazy" />
 
 The waiting room for the afterlife. Items you condemned from The Morgue or The Sanctuary are sent here and tagged with `[Chapel]`.
-* **Action (Pardon):** Forgive the media and send it back to the general library.
+* **"Leaving Soon" Collection:** When an item is condemned, it is automatically added to a public **"Leaving Soon"** collection visible to your users, giving them one last chance to watch it before it gets deleted!
+
+<img alt="leaving-soon-collection" src="https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollection.png" loading="lazy" />
+
+* **Action (Pardon):** Forgive the media and send it back to the general library (this removes it from the Leaving Soon collection).
 * **Action (Exorcise):** Perform Last Rites. This will **permanently delete** the media files from your physical hard drive and remove them from Jellyfin.
 
 ### 4. The Guestbook (User Analytics)
@@ -90,3 +94,12 @@ If you wish to compile the plugin yourself:
 
 ## 📜 License
 This project is licensed under the MIT License - see the [LICENSE](https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/LICENSE) file for details.
+
+---
+
+---
+
+## 🤖 AI Disclosure
+**Graveyard Analytics** uses AI-assisted logic for its C# backend. 
+* **Scope:** AI was utilized specifically for **C# code optimization, logic refinement, and resolving .NET 9 compatibility warnings.**
+* **Oversight:** All architectural decisions, thematic design, and final code integrations were performed by the maintainer. Every line of code has been manually reviewed and tested to ensure stability within the Jellyfin 10.11.0+ environment.
