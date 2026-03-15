@@ -9,13 +9,12 @@ fi
 VERSION=$1
 SOURCE_DIR="JellyfinGraveyardAnalytics/bin/Release/net9.0/publish"
 DEST_DIR="Releases/$VERSION"
+ZIP_NAME="JellyfinGraveyardAnalytics.zip"
 
-# Create the dynamic release folder
 mkdir -p "$DEST_DIR"
 
 echo "📦 Preparing release $VERSION..."
 
-# List of files to move
 FILES=("Dapper.dll" "JellyfinAnalyticsPlugin.dll")
 
 for FILE in "${FILES[@]}"; do
@@ -23,10 +22,20 @@ for FILE in "${FILES[@]}"; do
     cp "$SOURCE_DIR/$FILE" "$DEST_DIR/"
     echo "✅ Copied $FILE to $DEST_DIR"
   else
-    echo "❌ ERROR: $FILE not found in $SOURCE_DIR"
+    echo "❌ ERROR: $FILE not found in $SOURCE_DIR. Did you run 'dotnet publish -c Release'?"
     exit 1
   fi
 done
 
+echo "🗜️  Zipping assets..."
+cd "$DEST_DIR" || exit
+zip -q "$ZIP_NAME" "${FILES[@]}"
+
+echo "🔐 Calculating MD5 Checksum..."
+CHECKSUM=$(md5 -q "$ZIP_NAME")
+
 echo "---"
-echo "🎉 Release $VERSION is ready in the /$DEST_DIR folder."
+echo "🎉 Release $VERSION is ready!"
+echo "📍 Location: $DEST_DIR/$ZIP_NAME"
+echo "📝 Checksum for manifest.json: $CHECKSUM"
+echo "---"

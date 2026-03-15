@@ -15,6 +15,14 @@
         "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.0.0.0/JellyfinGraveyardAnalytics.zip",
         "checksum": "8dd354b9f88206966bec8c52395e14a9",
         "timestamp": "2026-03-14T00:00:00Z"
+      },
+      {
+        "version": "1.1.0.0",
+        "changelog": "The Chapel Update: Automated collection branding, thematic iconography, and .NET 9 performance optimizations.",
+        "targetAbi": "10.11.0.0",
+        "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.1.0.0/JellyfinGraveyardAnalytics.zip",
+        "checksum": "752d33c8a27e8c1afa5e3681030c59ee",
+        "timestamp": "2026-03-15T15:39:00Z"
       }
     ]
   }
