@@ -155,32 +155,64 @@ namespace JellyfinAnalyticsPlugin.Controllers
                     // --- IMAGE LOGIC ---
                     if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Primary, 0))
                     {
-                        try
-                        {
-                            var imageUrl = "https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollection.png";
-                            using var httpClient = _httpClientFactory.CreateClient();
-                            using var response = await httpClient.GetAsync(imageUrl).ConfigureAwait(false);
+                      try
+                      {
+                          using var httpClient = _httpClientFactory.CreateClient();
 
-                            if (response.IsSuccessStatusCode && response.Content is not null)
-                            {
-                                using var imageStream = await response.Content!.ReadAsStreamAsync().ConfigureAwait(false);
-                                if (imageStream is not null)
-                                {
-                                    await _providerManager.SaveImage(
-                                        chapelCollection!,
-                                        imageStream,
-                                        "image/png",
-                                        MediaBrowser.Model.Entities.ImageType.Primary,
-                                        null,
-                                        CancellationToken.None
-                                    ).ConfigureAwait(false);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to set default artwork.");
-                        }
+                          var thumbUrl = "https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollectionthumbnail.png";
+                          using (var response = await httpClient.GetAsync(thumbUrl).ConfigureAwait(false))
+                          {
+                              if (response.IsSuccessStatusCode && response.Content is not null)
+                              {
+                                  using var imageStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                                  await _providerManager.SaveImage(
+                                      chapelCollection!,
+                                      imageStream,
+                                      "image/png",
+                                      MediaBrowser.Model.Entities.ImageType.Primary,
+                                      null,
+                                      CancellationToken.None
+                                  ).ConfigureAwait(false);
+                              }
+                          }
+
+                          _logger.LogInformation("The Chapel has been fully branded with custom iconography.");
+                      }
+                      catch (Exception ex)
+                      {
+                          _logger.LogError(ex, "Failed to apply thematic branding to The Chapel.");
+                      }
+                    }
+
+                    if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Backdrop, 0))
+                    {
+                      try
+                      {
+                          using var httpClient = _httpClientFactory.CreateClient();
+
+                          var backdropUrl = "https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollectionbackdrop.png";
+                          using (var response = await httpClient.GetAsync(backdropUrl).ConfigureAwait(false))
+                          {
+                              if (response.IsSuccessStatusCode && response.Content is not null)
+                              {
+                                  using var imageStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+                                  await _providerManager.SaveImage(
+                                      chapelCollection!,
+                                      imageStream,
+                                      "image/png",
+                                      MediaBrowser.Model.Entities.ImageType.Backdrop,
+                                      null,
+                                      CancellationToken.None
+                                  ).ConfigureAwait(false);
+                              }
+                          }
+
+                          _logger.LogInformation("The Chapel has been fully branded with custom iconography.");
+                      }
+                      catch (Exception ex)
+                      {
+                          _logger.LogError(ex, "Failed to apply thematic branding to The Chapel.");
+                      }
                     }
 
                     if (chapelCollection != null)

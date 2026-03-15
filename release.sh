@@ -14,6 +14,7 @@ ZIP_NAME="JellyfinGraveyardAnalytics.zip"
 mkdir -p "$DEST_DIR"
 
 echo "📦 Preparing release $VERSION..."
+cd "JellyfinGraveyardAnalytics" && dotnet publish -c Release && cd ../
 
 FILES=("Dapper.dll" "JellyfinAnalyticsPlugin.dll")
 
