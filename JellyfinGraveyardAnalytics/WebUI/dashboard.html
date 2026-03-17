@@ -2,11 +2,13 @@
     <div class="content-primary">
         <div class="verticalSection">
 
-            <div style="border-bottom: 2px solid #333; margin-bottom: 20px; display: flex; gap: 20px;">
+            <div style="border-bottom: 2px solid #333; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap;">
                 <button id="tabLiving" class="graveyard-tab" onclick="window.switchTab('living')">The Sanctuary (Living)</button>
                 <button id="tabMorgue" class="graveyard-tab active-tab" onclick="window.switchTab('morgue')">The Morgue (Unwatched)</button>
                 <button id="tabChapel" class="graveyard-tab" onclick="window.switchTab('chapel')">The Chapel (Condemned)</button>
                 <button id="tabVisitors" class="graveyard-tab" onclick="window.switchTab('visitors')" style="color: #4CAF50;">The Guestbook (Visitors)</button>
+                <button id="tabSettings" class="graveyard-tab" onclick="window.switchTab('settings')" style="color: #bbb; margin-left: auto;">Settings ⚙️</button>
+                <button id="tabTracearr" class="graveyard-tab" onclick="window.switchTab('tracearr')" style="color: #00bcd4; display: none;">Tracearr Rules 📡</button>
             </div>
 
             <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px; margin-bottom: 30px;">
@@ -36,10 +38,48 @@
                     </div>
                 </div>
 
+                <div id="settingsContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333;">
+                    <h2 style="color: #e0e0e0; margin-top: 0;">Data Source Configuration</h2>
+                    <p style="color: #888; margin-bottom: 25px;">By default, Graveyard Analytics relies on the local Playback Reporting plugin. You can upgrade your data engine by connecting to a Tracearr instance for advanced, real-time analytics and webhooks.</p>
+
+                    <form id="graveyardConfigForm">
+
+                        <div style="margin-bottom: 20px; display: flex; align-items: center; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 6px; border-left: 4px solid #00bcd4;">
+                            <input type="checkbox" id="EnableTracearr" style="width: 20px; height: 20px; margin-right: 15px; cursor: pointer;">
+                            <div>
+                                <label for="EnableTracearr" style="display: block; color: #fff; font-weight: bold; cursor: pointer; margin: 0;">Enable Tracearr Engine</label>
+                                <span style="font-size: 0.85em; color: #aaa;">Bypass the local database and fetch analytics directly from Tracearr.</span>
+                            </div>
+                        </div>
+
+                        <div id="tracearrFields" style="display: none; padding-left: 20px; border-left: 2px solid #444; margin-bottom: 25px; margin-left: 10px;">
+                            <div style="margin-bottom: 15px;">
+                                <label for="TracearrUrl" style="display: block; color: #aaa; margin-bottom: 5px;">Tracearr API URL</label>
+                                <input type="text" id="TracearrUrl" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="e.g., http://192.168.1.100:8080">
+                            </div>
+                            <div>
+                                <label for="TracearrApiKey" style="display: block; color: #aaa; margin-bottom: 5px;">Tracearr API Key</label>
+                                <input type="password" id="TracearrApiKey" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="trc_xxxxxxxxxxxxxxx">
+                            </div>
+                        </div>
+
+                        <button type="button" onclick="window.savePluginConfig()" class="exorcise-btn" style="border-color: #4CAF50; color: #4CAF50; padding: 10px 20px; font-weight: bold;">Save Configuration</button>
+                        <span id="saveConfirmation" style="color: #4CAF50; margin-left: 15px; display: none;">Saved successfully!</span>
+                    </form>
+                </div>
+
+                <div id="tracearrContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #00bcd4;">
+                    <h2 style="color: #00bcd4; margin-top: 0;">Tracearr Automations & Webhooks</h2>
+                    <p style="color: #888;">Configure custom rules to automatically condemn dead weight without manual intervention.</p>
+                    <div style="background: rgba(0, 188, 212, 0.1); padding: 15px; border-radius: 4px; border-left: 4px solid #00bcd4;">
+                        <p style="margin: 0; color: #ccc;"><em>Webhook generation and Tracearr syncing will be available in the next minor patch once your backend controller is active!</em></p>
+                    </div>
+                </div>
+
                 <div id="mediaFilters" style="margin-bottom: 15px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
                     <input type="text" id="mediaSearch" placeholder="Search by name..." style="padding: 5px 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; flex-grow: 1;">
                     <div>
-                        <label for="mediaTypeFilter">Type:</label>
+                        <label for="mediaTypeFilter" style="color:#aaa;">Type:</label>
                         <select id="mediaTypeFilter" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
                             <option value="All">All Media</option>
                             <option value="Movie" selected>Movies</option>
@@ -47,7 +87,7 @@
                         </select>
                     </div>
                     <div>
-                        <label for="limitFilter">Show Top:</label>
+                        <label for="limitFilter" style="color:#aaa;">Show Top:</label>
                         <select id="limitFilter" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
                             <option value="10" selected>10</option>
                             <option value="20">20</option>
@@ -160,6 +200,7 @@
 
     <script>
         (function() {
+            var pluginId = "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21";
             window.currentTab = 'morgue';
 
             // Set default date for Visitor Tab to Today
@@ -169,17 +210,69 @@
             var yyyy = today.getFullYear();
             document.getElementById('visitorEndDate').value = yyyy + '-' + mm + '-' + dd;
 
+            document.getElementById('EnableTracearr').addEventListener('change', function() {
+                var fields = document.getElementById('tracearrFields');
+                if (this.checked) {
+                    fields.style.display = 'block';
+                } else {
+                    fields.style.display = 'none';
+                }
+            });
+
+            // LOAD PLUGIN CONFIGURATION
+            window.loadPluginConfig = function() {
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    if (config.TracearrUrl) document.getElementById('TracearrUrl').value = config.TracearrUrl;
+                    if (config.TracearrApiKey) document.getElementById('TracearrApiKey').value = config.TracearrApiKey;
+
+                    if (config.EnableTracearr) {
+                        document.getElementById('EnableTracearr').checked = true;
+                        document.getElementById('tracearrFields').style.display = 'block';
+                        document.getElementById('tabTracearr').style.display = 'inline-block';
+                    } else {
+                        document.getElementById('EnableTracearr').checked = false;
+                        document.getElementById('tracearrFields').style.display = 'none';
+                        document.getElementById('tabTracearr').style.display = 'none';
+                    }
+                });
+            };
+
+            // SAVE PLUGIN CONFIGURATION
+            window.savePluginConfig = function() {
+                var isEnabled = document.getElementById('EnableTracearr').checked;
+                var url = document.getElementById('TracearrUrl').value;
+                var key = document.getElementById('TracearrApiKey').value;
+
+                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
+                    config.EnableTracearr = isEnabled;
+                    config.TracearrUrl = url;
+                    config.TracearrApiKey = key;
+
+                    ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
+                        var confMsg = document.getElementById('saveConfirmation');
+                        confMsg.style.display = 'inline';
+                        setTimeout(function() { confMsg.style.display = 'none'; }, 3000);
+
+                        // Show or hide the tracearr tab dynamically based on the new saved state
+                        if (isEnabled) {
+                            document.getElementById('tabTracearr').style.display = 'inline-block';
+                        } else {
+                            document.getElementById('tabTracearr').style.display = 'none';
+                            // If they turn it off while ON the tracearr tab, boot them back to settings
+                            if (window.currentTab === 'tracearr') {
+                                window.switchTab('settings');
+                            }
+                        }
+                    });
+                });
+            };
+
             // TAB SWITCHING LOGIC
             window.switchTab = function(tabName) {
                 window.currentTab = tabName;
 
-                // Reset Tabs
-                document.getElementById('tabLiving').classList.remove('active-tab');
-                document.getElementById('tabMorgue').classList.remove('active-tab');
-                document.getElementById('tabChapel').classList.remove('active-tab');
-                document.getElementById('tabVisitors').classList.remove('active-tab');
+                document.querySelectorAll('.graveyard-tab').forEach(t => t.classList.remove('active-tab'));
 
-                // UI Elements to toggle
                 var mediaTopCard = document.getElementById('mediaTopCard');
                 var mediaFilters = document.getElementById('mediaFilters');
                 var mediaTableContainer = document.getElementById('mediaTableContainer');
@@ -187,48 +280,66 @@
                 var visitorSummary = document.getElementById('visitorSummary');
                 var visitorFilters = document.getElementById('visitorFilters');
                 var visitorTableContainer = document.getElementById('visitorTableContainer');
+                
+                var settingsContainer = document.getElementById('settingsContainer');
+                var tracearrContainer = document.getElementById('tracearrContainer');
 
                 var pageTitle = document.getElementById('pageMainTitle');
                 var pageDesc = document.getElementById('pageDescription');
 
+                mediaTopCard.style.display = 'none';
+                mediaFilters.style.display = 'none';
+                mediaTableContainer.style.display = 'none';
+                visitorSummary.style.display = 'none';
+                visitorFilters.style.display = 'none';
+                visitorTableContainer.style.display = 'none';
+                settingsContainer.style.display = 'none';
+                tracearrContainer.style.display = 'none';
+
                 if (tabName === 'visitors') {
                     document.getElementById('tabVisitors').classList.add('active-tab');
-
-                    mediaTopCard.style.display = 'none';
-                    mediaFilters.style.display = 'none';
-                    mediaTableContainer.style.display = 'none';
-
                     visitorSummary.style.display = 'flex';
                     visitorFilters.style.display = 'flex';
                     visitorTableContainer.style.display = 'block';
-
+                    
                     pageTitle.innerText = "THE GUESTBOOK";
                     pageDesc.innerText = "Monitor server traffic, review playback sessions, and track the lingering ghosts.";
+                    window.fetchAndRenderTable();
+
+                } else if (tabName === 'settings') {
+                    document.getElementById('tabSettings').classList.add('active-tab');
+                    settingsContainer.style.display = 'block';
+                    
+                    pageTitle.innerText = "PLUGIN CONFIGURATION";
+                    pageDesc.innerText = "Configure backend data providers and API integrations.";
+
+                } else if (tabName === 'tracearr') {
+                    document.getElementById('tabTracearr').classList.add('active-tab');
+                    tracearrContainer.style.display = 'block';
+                    
+                    pageTitle.innerText = "TRACEARR COMMAND CENTER";
+                    pageDesc.innerText = "Manage active webhooks and automated library cleanup rules.";
+
                 } else {
                     mediaTopCard.style.display = 'flex';
                     mediaFilters.style.display = 'flex';
                     mediaTableContainer.style.display = 'block';
 
-                    visitorSummary.style.display = 'none';
-                    visitorFilters.style.display = 'none';
-                    visitorTableContainer.style.display = 'none';
-
-                    pageTitle.innerText = "THE GRAVEYARD";
-                    pageDesc.innerText = "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.";
-
                     if (tabName === 'living') document.getElementById('tabLiving').classList.add('active-tab');
                     if (tabName === 'morgue') document.getElementById('tabMorgue').classList.add('active-tab');
                     if (tabName === 'chapel') document.getElementById('tabChapel').classList.add('active-tab');
+                    
+                    pageTitle.innerText = "THE GRAVEYARD";
+                    pageDesc.innerText = "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.";
+                    window.fetchAndRenderTable();
                 }
-
-                window.fetchAndRenderTable();
             };
 
             // ACTIONS
             window.condemnSubject = function(id, name, btnElement) {
                 if (confirm('Move "' + name + '" to The Chapel?')) {
                     var row = btnElement.closest('tr');
-                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('Analytics/Condemn/' + id) }).then(function() {
+                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('GraveyardAnalytics/Condemn/' + id) }).then(function() {
                         row.style.transition = 'all 0.5s ease'; row.style.opacity = '0'; row.style.transform = 'translateX(50px)';
                         setTimeout(window.fetchAndRenderTable, 500);
                     });
@@ -237,7 +348,7 @@
             window.pardonSubject = function(id, name, btnElement) {
                 if (confirm('Pardon "' + name + '"?')) {
                     var row = btnElement.closest('tr');
-                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('Analytics/Pardon/' + id) }).then(function() {
+                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('GraveyardAnalytics/Pardon/' + id) }).then(function() {
                         row.style.transition = 'all 0.5s ease'; row.style.opacity = '0'; row.style.transform = 'translateX(-50px)';
                         setTimeout(window.fetchAndRenderTable, 500);
                     });
@@ -246,7 +357,7 @@
             window.performLastRites = function(id, name, btnElement) {
                 if (confirm('Permanently delete "' + name + '" from your storage?')) {
                     var row = btnElement.closest('tr');
-                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('Analytics/LastRites/' + id) }).then(function() {
+                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('GraveyardAnalytics/LastRites/' + id) }).then(function() {
                         row.style.background = 'rgba(170, 46, 37, 0.3)'; row.style.opacity = '0';
                         setTimeout(window.fetchAndRenderTable, 500);
                     });
@@ -259,18 +370,15 @@
 
                 // RENDER VISITOR TABLE
                 window.renderVisitorTable = function(data) {
-                    // Populate Leaderboard
                     var leaderboardHtml = '';
                     data.Leaderboard.forEach(function(l) {
                         leaderboardHtml += '<li style="margin-bottom: 5px;"><strong>' + l.Name + '</strong> - ' + l.TotalTime + '</li>';
                     });
                     document.getElementById('leaderboardList').innerHTML = leaderboardHtml || '<li>No active visitors in this timeframe.</li>';
 
-                    // Populate Ghosts
                     var ghostsText = data.Ghosts.length > 0 ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
                     document.getElementById('ghostsList').innerText = ghostsText;
 
-                    // Populate Table
                     var tbody = document.getElementById('visitorTableBody');
                     tbody.innerHTML = '';
 
@@ -278,7 +386,6 @@
                         var tr = document.createElement('tr');
                         tr.style.borderBottom = '1px solid #333';
 
-                        // Highlight Transcodes in Red
                         var methodColor = session.IsTranscode ? '#cf6679' : '#888';
                         var methodWeight = session.IsTranscode ? 'bold' : 'normal';
 
@@ -338,11 +445,13 @@
                     if (window.currentTab === 'visitors') {
                         var endDate = document.getElementById('visitorEndDate').value;
                         var weeksBack = document.getElementById('visitorWeeksBack').value;
-                        var endpoint = 'Analytics/Visitors?endDate=' + endDate + '&weeksBack=' + weeksBack;
+                        var endpoint = 'GraveyardAnalytics/Visitors?endDate=' + endDate + '&weeksBack=' + weeksBack;
 
                         ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
                             window.renderVisitorTable(data);
                         });
+                    } else if (window.currentTab === 'settings' || window.currentTab === 'tracearr') {
+                        return;
                     } else {
                         var type = document.getElementById('mediaTypeFilter').value;
                         var limit = document.getElementById('limitFilter').value;
@@ -350,9 +459,9 @@
                         var encodedText = encodeURIComponent(text);
 
                         var endpoint = '';
-                        if (window.currentTab === 'living') endpoint = 'Analytics/Living?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
-                        else if (window.currentTab === 'morgue') endpoint = 'Analytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
-                        else endpoint = 'Analytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+                        if (window.currentTab === 'living') endpoint = 'GraveyardAnalytics/Living?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+                        else if (window.currentTab === 'morgue') endpoint = 'GraveyardAnalytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+                        else endpoint = 'GraveyardAnalytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
 
                         ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
                             var headerLabel = window.currentTab === 'living' ? "Total Size of Living Media" : "Total Dead Weight";
@@ -367,7 +476,7 @@
                 var searchTimeout = null;
                 document.getElementById('mediaSearch').addEventListener('input', function(e) {
                     if (searchTimeout) clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(window.fetchAndRenderTable, 500); // reduced to 500ms
+                    searchTimeout = setTimeout(window.fetchAndRenderTable, 500); 
                 });
 
                 document.getElementById('mediaTypeFilter').addEventListener('change', window.fetchAndRenderTable);
@@ -376,6 +485,7 @@
                 document.getElementById('visitorWeeksBack').addEventListener('change', window.fetchAndRenderTable);
 
                 // Initial load
+                window.loadPluginConfig(); 
                 window.fetchAndRenderTable();
             });
         })();
