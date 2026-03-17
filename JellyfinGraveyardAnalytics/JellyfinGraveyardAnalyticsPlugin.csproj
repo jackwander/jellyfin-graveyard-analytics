@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework> <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>JellyfinGraveyardAnalytics</RootNamespace>
     <Nullable>enable</Nullable>
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>

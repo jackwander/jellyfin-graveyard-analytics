@@ -1,6 +1,6 @@
 using System;
 
-namespace JellyfinAnalyticsPlugin.Models
+namespace JellyfinGraveyardAnalytics.Models
 {
     public class PlaybackEvent
     {

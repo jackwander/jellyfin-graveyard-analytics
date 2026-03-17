@@ -1,15 +1,15 @@
 using System;
 using System.Linq;
 using System.Collections.Generic;
-using JellyfinAnalyticsPlugin.Database;
-using JellyfinAnalyticsPlugin.Models;
+using JellyfinGraveyardAnalytics.Database;
+using JellyfinGraveyardAnalytics.Models;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Entities;
 using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Entities.Movies;
 using MediaBrowser.Model.Querying;
 
-namespace JellyfinAnalyticsPlugin.Services
+namespace JellyfinGraveyardAnalytics.Services
 {
     public class AnalyticsService
     {
@@ -26,7 +26,7 @@ namespace JellyfinAnalyticsPlugin.Services
             _userManager = userManager;
         }
 
-        public JellyfinAnalyticsPlugin.Models.LeastWatchedResponse GetLeastWatchedItems(string mediaType, string? mediaSearch, int limit)
+        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLeastWatchedItems(string mediaType, string? mediaSearch, int limit)
         {
             var playCounts = _repository.GetItemPlayCounts();
 
@@ -136,7 +136,7 @@ namespace JellyfinAnalyticsPlugin.Services
                     }
                 }
 
-                return new JellyfinAnalyticsPlugin.Models.LeastWatchedItem
+                return new JellyfinGraveyardAnalytics.Models.LeastWatchedItem
                 {
                     MediaId = item.Id.ToString(),
                     Name = item.Name ?? "Unknown",
@@ -154,7 +154,7 @@ namespace JellyfinAnalyticsPlugin.Services
 
             long wasteBytes = mappedItems.Where(x => x.PlayCount == 0).Sum(x => x.Size);
 
-            return new JellyfinAnalyticsPlugin.Models.LeastWatchedResponse
+            return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
             {
                 Items = mappedItems
                     .OrderBy(x => x.UniqueViewers)
@@ -179,7 +179,7 @@ namespace JellyfinAnalyticsPlugin.Services
             return $"{dblSByte:0.##} {Suffix[i]}";
         }
 
-        public JellyfinAnalyticsPlugin.Models.LeastWatchedResponse GetPurgatoryItems(string mediaType, string? mediaSearch, int limit)
+        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetPurgatoryItems(string mediaType, string? mediaSearch, int limit)
         {
             var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
             {
@@ -227,7 +227,7 @@ namespace JellyfinAnalyticsPlugin.Services
                     itemSize = item.Size ?? 0;
                 }
 
-                return new JellyfinAnalyticsPlugin.Models.LeastWatchedItem
+                return new JellyfinGraveyardAnalytics.Models.LeastWatchedItem
                 {
                     MediaId = item.Id.ToString(),
                     Name = item.Name ?? "Unknown",
@@ -240,14 +240,14 @@ namespace JellyfinAnalyticsPlugin.Services
 
             var totalSize = mappedItems.Sum(x => x.Size);
 
-            return new JellyfinAnalyticsPlugin.Models.LeastWatchedResponse
+            return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
             {
                 Items = mappedItems.OrderByDescending(x => x.Size).Take(limit).ToList(),
                 TotalWastedSize = FormatBytes(totalSize)
             };
         }
 
-        public JellyfinAnalyticsPlugin.Models.LeastWatchedResponse GetLivingItems(string mediaType, int limit, string? mediaSearch)
+        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLivingItems(string mediaType, int limit, string? mediaSearch)
         {
             var playCounts = _repository.GetItemPlayCounts();
             var itemViewers = _repository.GetItemViewers();
@@ -332,7 +332,7 @@ namespace JellyfinAnalyticsPlugin.Services
                 var ts = System.TimeSpan.FromSeconds(totalDurationSeconds);
                 string formattedDuration = $"{(int)System.Math.Floor(ts.TotalHours):D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
 
-                return new JellyfinAnalyticsPlugin.Models.LeastWatchedItem
+                return new JellyfinGraveyardAnalytics.Models.LeastWatchedItem
                 {
                     MediaId = item.Id.ToString(),
                     Name = item.Name ?? "Unknown",
@@ -348,12 +348,12 @@ namespace JellyfinAnalyticsPlugin.Services
                 };
             })
             .Where(x => x != null)
-            .Cast<JellyfinAnalyticsPlugin.Models.LeastWatchedItem>()
+            .Cast<JellyfinGraveyardAnalytics.Models.LeastWatchedItem>()
             .ToList();
 
             long totalLivingSize = mappedItems.Sum(x => x.Size);
 
-            return new JellyfinAnalyticsPlugin.Models.LeastWatchedResponse
+            return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
             {
                 Items = mappedItems
                     .OrderByDescending(x => x.PlayCount)
@@ -364,7 +364,7 @@ namespace JellyfinAnalyticsPlugin.Services
             };
         }
 
-        public JellyfinAnalyticsPlugin.Models.VisitorResponse GetVisitorActivity(string endDateString, int weeksBack)
+        public JellyfinGraveyardAnalytics.Models.VisitorResponse GetVisitorActivity(string endDateString, int weeksBack)
         {
             if (!System.DateTime.TryParse(endDateString, out System.DateTime endDate))
             {
@@ -380,7 +380,7 @@ namespace JellyfinAnalyticsPlugin.Services
 
             var rawData = _repository.GetRawPlaybackActivity(startDate, endDate);
 
-            var sessions = new List<JellyfinAnalyticsPlugin.Models.VisitorSession>();
+            var sessions = new List<JellyfinGraveyardAnalytics.Models.VisitorSession>();
 
             foreach (var row in rawData)
             {
@@ -400,7 +400,7 @@ namespace JellyfinAnalyticsPlugin.Services
                 System.DateTime rowDate;
                 System.DateTime.TryParse(row.DateCreated?.ToString(), out rowDate);
 
-                sessions.Add(new JellyfinAnalyticsPlugin.Models.VisitorSession
+                sessions.Add(new JellyfinGraveyardAnalytics.Models.VisitorSession
                 {
                     Time = rowDate.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt"),
                     Visitor = visitorName,
@@ -424,14 +424,14 @@ namespace JellyfinAnalyticsPlugin.Services
                 .Take(3)
                 .Select(kvp => {
                     var ts = System.TimeSpan.FromSeconds(kvp.Value);
-                    return new JellyfinAnalyticsPlugin.Models.VisitorLeaderboardEntry
+                    return new JellyfinGraveyardAnalytics.Models.VisitorLeaderboardEntry
                     {
                         Name = kvp.Key,
                         TotalTime = $"{(int)System.Math.Floor(ts.TotalHours)}h {ts.Minutes}m"
                     };
                 }).ToList();
 
-            return new JellyfinAnalyticsPlugin.Models.VisitorResponse
+            return new JellyfinGraveyardAnalytics.Models.VisitorResponse
             {
                 Sessions = sessions,
                 Ghosts = ghosts,

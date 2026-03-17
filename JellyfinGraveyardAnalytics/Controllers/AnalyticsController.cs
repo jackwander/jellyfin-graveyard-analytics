@@ -9,7 +9,7 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
-using JellyfinAnalyticsPlugin.Services;
+using JellyfinGraveyardAnalytics.Services;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Collections;
 using Microsoft.Extensions.Logging;
@@ -18,10 +18,10 @@ using System.Threading.Tasks;
 using System.Net.Http;
 using MediaBrowser.Controller.Providers;
 
-namespace JellyfinAnalyticsPlugin.Controllers
+namespace JellyfinGraveyardAnalytics.Controllers
 {
     [ApiController]
-    [Route("Analytics")]
+    [Route("GraveyardAnalytics")]
     [Authorize(Policy = "RequiresElevation")]
     public class AnalyticsController : ControllerBase
     {
@@ -84,7 +84,7 @@ namespace JellyfinAnalyticsPlugin.Controllers
         }
 
         [HttpGet("Purgatory")]
-        public ActionResult<JellyfinAnalyticsPlugin.Models.LeastWatchedResponse> GetPurgatory(
+        public ActionResult<JellyfinGraveyardAnalytics.Models.LeastWatchedResponse> GetPurgatory(
             [FromQuery] string mediaType = "All",
             [FromQuery] string? mediaSearch = null,
             [FromQuery] int limit = 50)
@@ -270,7 +270,7 @@ namespace JellyfinAnalyticsPlugin.Controllers
         }
 
         [HttpGet("Living")]
-        public ActionResult<JellyfinAnalyticsPlugin.Models.LeastWatchedResponse> GetLiving(
+        public ActionResult<JellyfinGraveyardAnalytics.Models.LeastWatchedResponse> GetLiving(
           [FromQuery] string mediaType = "All",
           [FromQuery] int limit = 50,
           [FromQuery] string mediaSearch = "")
@@ -284,7 +284,7 @@ namespace JellyfinAnalyticsPlugin.Controllers
         }
 
         [HttpGet("Visitors")]
-        public ActionResult<JellyfinAnalyticsPlugin.Models.VisitorResponse> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
+        public ActionResult<JellyfinGraveyardAnalytics.Models.VisitorResponse> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
         {
             if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
             {

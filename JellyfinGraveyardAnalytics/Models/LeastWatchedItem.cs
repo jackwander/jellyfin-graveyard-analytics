@@ -1,4 +1,4 @@
-namespace JellyfinAnalyticsPlugin.Models
+namespace JellyfinGraveyardAnalytics.Models
 {
     public class LeastWatchedItem
     {

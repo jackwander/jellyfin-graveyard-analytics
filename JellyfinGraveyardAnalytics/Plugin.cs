@@ -5,10 +5,10 @@ using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 using MediaBrowser.Controller.Library;
-using JellyfinAnalyticsPlugin.Configuration;
-using JellyfinAnalyticsPlugin.Database;
+using JellyfinGraveyardAnalytics.Configuration;
+using JellyfinGraveyardAnalytics.Database;
 
-namespace JellyfinAnalyticsPlugin
+namespace JellyfinGraveyardAnalytics
 {
     public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     {
@@ -51,7 +51,7 @@ namespace JellyfinAnalyticsPlugin
                 new PluginPageInfo
                 {
                     Name = "GraveyardAnalytics",
-                    EmbeddedResourcePath = "JellyfinAnalyticsPlugin.WebUI.dashboard.html",
+                    EmbeddedResourcePath = "JellyfinGraveyardAnalytics.WebUI.dashboard.html",
                     EnableInMainMenu = true,
                     MenuSection = "admin",
                     MenuIcon = "analytics"

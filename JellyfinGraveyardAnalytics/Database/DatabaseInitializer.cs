@@ -1,7 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Dapper;
 
-namespace JellyfinAnalyticsPlugin.Database
+namespace JellyfinGraveyardAnalytics.Database
 {
     public class DatabaseInitializer
     {

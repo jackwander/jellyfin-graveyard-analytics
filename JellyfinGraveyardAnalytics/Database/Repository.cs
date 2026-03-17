@@ -1,13 +1,13 @@
 using Dapper;
 using Microsoft.Data.Sqlite;
 using MediaBrowser.Common.Configuration;
-using JellyfinAnalyticsPlugin.Models;
+using JellyfinGraveyardAnalytics.Models;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System;
 
-namespace JellyfinAnalyticsPlugin.Database
+namespace JellyfinGraveyardAnalytics.Database
 {
     public class Repository
     {

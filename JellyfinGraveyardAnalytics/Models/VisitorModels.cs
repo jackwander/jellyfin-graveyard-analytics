@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace JellyfinAnalyticsPlugin.Models
+namespace JellyfinGraveyardAnalytics.Models
 {
     public class VisitorSession
     {
