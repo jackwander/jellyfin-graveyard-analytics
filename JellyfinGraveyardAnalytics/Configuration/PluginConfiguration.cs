@@ -1,10 +1,20 @@
 using MediaBrowser.Model.Plugins;
 
-namespace JellyfinAnalyticsPlugin.Configuration
+namespace JellyfinGraveyardAnalytics.Configuration
 {
     public class PluginConfiguration : BasePluginConfiguration
     {
-        // v1.0 is completely UI-driven via the Dashboard.
-        // Future customizable settings (like changing the 12-month death threshold) can go here later!
+        // --- Start of Tracearr Integration ---
+        public bool EnableTracearr { get; set; }
+        public string TracearrUrl { get; set; }
+        public string TracearrApiKey { get; set; }
+        // --- End of Tracearr Integration ---
+
+        public PluginConfiguration()
+        {
+            EnableTracearr = false;
+            TracearrUrl = string.Empty;
+            TracearrApiKey = string.Empty;
+        }
     }
 }

@@ -16,7 +16,7 @@ mkdir -p "$DEST_DIR"
 echo "📦 Preparing release $VERSION..."
 cd "JellyfinGraveyardAnalytics" && dotnet publish -c Release && cd ../
 
-FILES=("Dapper.dll" "JellyfinAnalyticsPlugin.dll")
+FILES=("Dapper.dll" "JellyfinGraveyardAnalyticsPlugin.dll")
 
 for FILE in "${FILES[@]}"; do
   if [ -f "$SOURCE_DIR/$FILE" ]; then
