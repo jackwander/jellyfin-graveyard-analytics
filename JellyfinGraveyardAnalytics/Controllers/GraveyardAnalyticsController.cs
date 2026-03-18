@@ -7,33 +7,45 @@
  * -----------------------------------------------------------------------
  */
 
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
-using JellyfinGraveyardAnalytics.Services;
-using MediaBrowser.Controller.Library;
-using MediaBrowser.Controller.Collections;
-using Microsoft.Extensions.Logging;
+using System;
+using System.Linq;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Net.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Logging;
+using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Providers;
+using JellyfinGraveyardAnalytics.Services;
 
 namespace JellyfinGraveyardAnalytics.Controllers
 {
     [ApiController]
-    [Route("GraveyardAnalytics")]
+    [Route("/GraveyardAnalytics")]
     [Authorize(Policy = "RequiresElevation")]
-    public class AnalyticsController : ControllerBase
+    public class GraveyardAnalyticsController : ControllerBase
     {
         private readonly ILibraryManager _libraryManager;
-        private readonly ILogger<AnalyticsController> _logger;
+        private readonly ILogger<GraveyardAnalyticsController> _logger;
         private readonly ICollectionManager _collectionManager;
         private readonly IUserManager _userManager;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IProviderManager _providerManager;
+        private readonly TracearrService _tracearrService;
 
-        public AnalyticsController(ILibraryManager libraryManager, ILogger<AnalyticsController> logger, ICollectionManager collectionManager, IUserManager userManager, IHttpClientFactory httpClientFactory, IProviderManager providerManager)
+        public GraveyardAnalyticsController(
+            TracearrService tracearrService,
+            ILibraryManager libraryManager,
+            ILogger<GraveyardAnalyticsController> logger,
+            ICollectionManager collectionManager,
+            IUserManager userManager,
+            IHttpClientFactory httpClientFactory,
+            IProviderManager providerManager)
         {
+            _tracearrService = tracearrService;
             _libraryManager = libraryManager;
             _logger = logger;
             _collectionManager = collectionManager;
@@ -43,17 +55,32 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("LeastWatched")]
-        public IActionResult GetLeastWatched(
+        public async Task<IActionResult> GetLeastWatched(
           [FromQuery] string mediaType = "All",
           [FromQuery] string? mediaSearch = null,
           [FromQuery] int limit = 20)
         {
+            var config = Plugin.Instance.Configuration;
+
+            if (config.EnableTracearr)
+            {
+                try
+                {
+                    var tracearrData = await _tracearrService.GetStaleMediaAsync(mediaType, mediaSearch, limit);
+                    return Ok(tracearrData);
+                }
+                catch (Exception ex)
+                {
+                    return BadRequest($"Tracearr Engine Error: {ex.Message}");
+                }
+            }
+
             if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
             {
                 return BadRequest("CRITICAL ERROR: The Playback Reporting plugin database was not found. Please install Playback Reporting first.");
             }
-            var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
 
+            var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
             return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit));
         }
 
@@ -84,7 +111,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Purgatory")]
-        public ActionResult<JellyfinGraveyardAnalytics.Models.LeastWatchedResponse> GetPurgatory(
+        public IActionResult GetPurgatory(
             [FromQuery] string mediaType = "All",
             [FromQuery] string? mediaSearch = null,
             [FromQuery] int limit = 50)
@@ -103,6 +130,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 return StatusCode(500, ex.Message);
             }
         }
+
         [HttpPost("Condemn/{itemId}")]
         public async Task<IActionResult> CondemnSubject(string itemId)
         {
@@ -270,7 +298,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Living")]
-        public ActionResult<JellyfinGraveyardAnalytics.Models.LeastWatchedResponse> GetLiving(
+        public IActionResult GetLiving(
           [FromQuery] string mediaType = "All",
           [FromQuery] int limit = 50,
           [FromQuery] string mediaSearch = "")
@@ -284,7 +312,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Visitors")]
-        public ActionResult<JellyfinGraveyardAnalytics.Models.VisitorResponse> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
+        public IActionResult GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
         {
             if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
             {
@@ -300,6 +328,13 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 _logger.LogError(ex, "Failed to get visitor activity.");
                 return StatusCode(500, ex.Message);
             }
+        }
+
+        [HttpGet("Ping")]
+        [AllowAnonymous]
+        public IActionResult Ping()
+        {
+            return Ok(new { message = "The Graveyard Controller is ALIVE!" });
         }
     }
 }
