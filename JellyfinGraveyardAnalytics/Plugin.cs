@@ -3,10 +3,14 @@ using System.Collections.Generic;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
 using MediaBrowser.Model.Plugins;
+using MediaBrowser.Controller.Plugins;
 using MediaBrowser.Model.Serialization;
 using MediaBrowser.Controller.Library;
+using MediaBrowser.Controller;
 using JellyfinGraveyardAnalytics.Configuration;
 using JellyfinGraveyardAnalytics.Database;
+using JellyfinGraveyardAnalytics.Services;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace JellyfinGraveyardAnalytics
 {
@@ -39,7 +43,7 @@ namespace JellyfinGraveyardAnalytics
             : base(applicationPaths, xmlSerializer)
         {
             Instance = this;
-            _appPaths = applicationPaths; // Fixed: Now correctly assigned
+            _appPaths = applicationPaths;
             LibraryManager = libraryManager;
             UserManager = userManager;
             UserDataManager = userDataManager;
@@ -57,6 +61,14 @@ namespace JellyfinGraveyardAnalytics
                     MenuIcon = "analytics"
                 }
             ];
+        }
+    }
+
+    public class GraveyardServiceRegistrator : IPluginServiceRegistrator
+    {
+        public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
+        {
+            serviceCollection.AddHttpClient<TracearrService>();
         }
     }
 }

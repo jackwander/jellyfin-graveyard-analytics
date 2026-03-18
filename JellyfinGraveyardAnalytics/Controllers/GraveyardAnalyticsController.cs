@@ -66,8 +66,9 @@ namespace JellyfinGraveyardAnalytics.Controllers
             {
                 try
                 {
-                    var tracearrData = await _tracearrService.GetStaleMediaAsync(mediaType, mediaSearch, limit);
-                    return Ok(tracearrData);
+                    // var tracearrData = await _tracearrService.GetStaleMediaAsync(mediaType, mediaSearch, limit);
+                    // return Ok(tracearrData);
+                      return Ok();
                 }
                 catch (Exception ex)
                 {
@@ -312,8 +313,23 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Visitors")]
-        public IActionResult GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
+        public async Task<IActionResult> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
         {
+            var config = Plugin.Instance.Configuration;
+
+            if (config.EnableTracearr)
+            {
+                try
+                {
+                    var tracearrData = await _tracearrService.GetVisitorHistoryAsync(endDate, weeksBack);
+                    return Ok(tracearrData);
+                }
+                catch (Exception ex)
+                {
+                    return BadRequest($"Tracearr Engine Error: {ex.Message}");
+                }
+            }
+
             if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
             {
                 return BadRequest("CRITICAL ERROR: The Playback Reporting plugin database was not found. Please install Playback Reporting first.");
