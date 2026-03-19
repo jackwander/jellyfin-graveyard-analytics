@@ -1,4 +1,4 @@
-<div id="AnalyticsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button">
+<div id="GraveyardAnalyticsPage" data-role="page" class="page type-interior pluginConfigurationPage" data-require="emby-button">
     <div class="content-primary">
         <div class="verticalSection">
 
@@ -55,11 +55,11 @@
                         <div id="tracearrFields" style="display: none; padding-left: 20px; border-left: 2px solid #444; margin-bottom: 25px; margin-left: 10px;">
                             <div style="margin-bottom: 15px;">
                                 <label for="TracearrUrl" style="display: block; color: #aaa; margin-bottom: 5px;">Tracearr API URL</label>
-                                <input type="text" id="TracearrUrl" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="e.g., http://192.168.1.100:8080">
+                                <input type="text" id="TracearrUrl" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="e.g., http://tracearr:3000">
                             </div>
                             <div>
                                 <label for="TracearrApiKey" style="display: block; color: #aaa; margin-bottom: 5px;">Tracearr API Key</label>
-                                <input type="password" id="TracearrApiKey" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="trc_xxxxxxxxxxxxxxx">
+                                <input type="password" id="TracearrApiKey" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="trr_pub_xxxxxxxxxxxxxxx">
                             </div>
                         </div>
 
@@ -135,19 +135,36 @@
                     </table>
                 </div>
 
-                <div id="visitorTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                <div id="tracearrTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #00bcd4; overflow-x: auto;">
                     <table style="width: 100%; text-align: left; border-collapse: collapse;">
                         <thead>
-                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
+                            <tr style="border-bottom: 2px solid #00bcd4; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
+                                <th style="padding: 12px 10px; color: #00bcd4;">Visitor (The Sinner)</th>
+                                <th style="padding: 12px 10px;">The Relic (Media)</th>
+                                <th style="padding: 12px 10px;">The Vessel (Device)</th>
+                                <th style="padding: 12px 10px;">Time of Disturbance</th>
+                                <th style="padding: 12px 10px;">Duration</th>
+                                <th style="padding: 12px 10px;">Method</th>
+                                <th style="padding: 12px 10px;">The Fate</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tracearrTableBody"></tbody>
+                    </table>
+                </div>
+
+                <div id="fallbackTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid #4CAF50; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
                                 <th style="padding: 12px 10px;">Time</th>
                                 <th style="padding: 12px 10px; color: #4CAF50;">Visitor</th>
-                                <th style="padding: 12px 10px;">Subject</th>
-                                <th style="padding: 12px 10px;">Device / Client</th>
+                                <th style="padding: 12px 10px;">Subject (Media)</th>
+                                <th style="padding: 12px 10px;">Device</th>
                                 <th style="padding: 12px 10px;">Method</th>
                                 <th style="padding: 12px 10px;">Duration</th>
                             </tr>
                         </thead>
-                        <tbody id="visitorTableBody"></tbody>
+                        <tbody id="fallbackTableBody"></tbody>
                     </table>
                 </div>
 
@@ -279,8 +296,9 @@
 
                 var visitorSummary = document.getElementById('visitorSummary');
                 var visitorFilters = document.getElementById('visitorFilters');
-                var visitorTableContainer = document.getElementById('visitorTableContainer');
-                
+                var tracearrTableContainer = document.getElementById('tracearrTableContainer');
+                var fallbackTableContainer = document.getElementById('fallbackTableContainer');
+
                 var settingsContainer = document.getElementById('settingsContainer');
                 var tracearrContainer = document.getElementById('tracearrContainer');
 
@@ -292,16 +310,15 @@
                 mediaTableContainer.style.display = 'none';
                 visitorSummary.style.display = 'none';
                 visitorFilters.style.display = 'none';
-                visitorTableContainer.style.display = 'none';
+                tracearrTableContainer.style.display = 'none';
+                fallbackTableContainer.style.display = 'none';
                 settingsContainer.style.display = 'none';
                 tracearrContainer.style.display = 'none';
 
                 if (tabName === 'visitors') {
                     document.getElementById('tabVisitors').classList.add('active-tab');
-                    visitorSummary.style.display = 'flex';
+
                     visitorFilters.style.display = 'flex';
-                    visitorTableContainer.style.display = 'block';
-                    
                     pageTitle.innerText = "THE GUESTBOOK";
                     pageDesc.innerText = "Monitor server traffic, review playback sessions, and track the lingering ghosts.";
                     window.fetchAndRenderTable();
@@ -309,14 +326,14 @@
                 } else if (tabName === 'settings') {
                     document.getElementById('tabSettings').classList.add('active-tab');
                     settingsContainer.style.display = 'block';
-                    
+
                     pageTitle.innerText = "PLUGIN CONFIGURATION";
                     pageDesc.innerText = "Configure backend data providers and API integrations.";
 
                 } else if (tabName === 'tracearr') {
                     document.getElementById('tabTracearr').classList.add('active-tab');
                     tracearrContainer.style.display = 'block';
-                    
+
                     pageTitle.innerText = "TRACEARR COMMAND CENTER";
                     pageDesc.innerText = "Manage active webhooks and automated library cleanup rules.";
 
@@ -328,7 +345,7 @@
                     if (tabName === 'living') document.getElementById('tabLiving').classList.add('active-tab');
                     if (tabName === 'morgue') document.getElementById('tabMorgue').classList.add('active-tab');
                     if (tabName === 'chapel') document.getElementById('tabChapel').classList.add('active-tab');
-                    
+
                     pageTitle.innerText = "THE GRAVEYARD";
                     pageDesc.innerText = "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.";
                     window.fetchAndRenderTable();
@@ -364,41 +381,143 @@
                 }
             };
 
-            var view = document.getElementById('AnalyticsPage');
+            var view = document.getElementById('GraveyardAnalyticsPage');
 
             view.addEventListener('viewshow', function () {
 
-                // RENDER VISITOR TABLE
-                window.renderVisitorTable = function(data) {
-                    var leaderboardHtml = '';
-                    data.Leaderboard.forEach(function(l) {
-                        leaderboardHtml += '<li style="margin-bottom: 5px;"><strong>' + l.Name + '</strong> - ' + l.TotalTime + '</li>';
-                    });
-                    document.getElementById('leaderboardList').innerHTML = leaderboardHtml || '<li>No active visitors in this timeframe.</li>';
+                // UPDATED: DUAL RENDERER FOR VISITOR TABLE
+                window.renderVisitorTable = function(response) {
+                    var isTracearr = !!response.data;
 
-                    var ghostsText = data.Ghosts.length > 0 ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
-                    document.getElementById('ghostsList').innerText = ghostsText;
+                    var tracearrCont = document.getElementById('tracearrTableContainer');
+                    var fallbackCont = document.getElementById('fallbackTableContainer');
+                    var summaryCont = document.getElementById('visitorSummary');
 
-                    var tbody = document.getElementById('visitorTableBody');
-                    tbody.innerHTML = '';
+                    // 1. Toggle Visibility based on the engine
+                    if (isTracearr) {
+                        tracearrCont.style.display = 'block';
+                        fallbackCont.style.display = 'none';
+                        summaryCont.style.display = 'none'; // Tracearr doesn't use the simple summary boxes
+                        renderTracearrRows(response.data);
+                    } else {
+                        tracearrCont.style.display = 'none';
+                        fallbackCont.style.display = 'block';
+                        summaryCont.style.display = 'flex'; // SQLite uses summary boxes
+                        renderFallbackRows(response);
+                    }
 
-                    data.Sessions.forEach(function(session) {
-                        var tr = document.createElement('tr');
-                        tr.style.borderBottom = '1px solid #333';
+                    // 2. Tracearr Table Builder
+                    function renderTracearrRows(items) {
+                        var tbody = document.getElementById('tracearrTableBody');
+                        tbody.innerHTML = '';
 
-                        var methodColor = session.IsTranscode ? '#cf6679' : '#888';
-                        var methodWeight = session.IsTranscode ? 'bold' : 'normal';
+                        if (items.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">No Tracearr records found for this period.</td></tr>';
+                            return;
+                        }
 
-                        tr.innerHTML =
-                          '<td style="padding: 12px 10px; color: #aaa; font-size: 0.9em;">' + session.Time + '</td>' +
-                          '<td style="padding: 12px 10px; color: #e0e0e0; font-weight: bold;">' + session.Visitor + '</td>' +
-                          '<td style="padding: 12px 10px; color: #fff;">' + session.Subject + '<br><span style="font-size:0.8em; color:#666;">' + session.Type + '</span></td>' +
-                          '<td style="padding: 12px 10px; color: #aaa;">' + session.Device + '<br><span style="font-size:0.8em; color:#666;">' + session.Client + '</span></td>' +
-                          '<td style="padding: 12px 10px; color: ' + methodColor + '; font-weight: ' + methodWeight + ';">' + session.Method + '</td>' +
-                          '<td style="padding: 12px 10px; font-family: monospace; color: #aaa;">' + session.Duration + '</td>';
+                        items.forEach(function(session) {
+                            var tr = document.createElement('tr');
+                            tr.style.borderBottom = '1px solid #222';
 
-                        tbody.appendChild(tr);
-                    });
+                            // The Sinner
+                            var username = session.user && session.user.username ? session.user.username : 'Unknown Entity';
+
+                            // The Relic
+                            var title = session.showTitle ? (session.showTitle + ' - ' + session.mediaTitle) : (session.mediaTitle || 'Unknown Relic');
+
+                            // The Vessel
+                            var device = session.device + '<br><small style="color:#555;">' + (session.player || 'Unknown Player') + '</small>';
+
+                            // Time of Disturbance
+                            var watchDate = session.startedAt ? new Date(session.startedAt).toLocaleString() : 'Unknown Date';
+
+                            // Duration Math
+                            var totalSec = Math.floor((session.durationMs || 0) / 1000);
+                            var h = Math.floor(totalSec / 3600);
+                            var m = Math.floor((totalSec % 3600) / 60);
+                            var s = totalSec % 60;
+                            var formattedDuration = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+
+                            // Method
+                            var isTranscode = session.isTranscode;
+                            var methodHtml = '<span style="color:' + (isTranscode ? '#cf6679' : '#888') + '; font-weight:' + (isTranscode ? 'bold' : 'normal') + ';">' + (session.videoDecision ? session.videoDecision.toUpperCase() : 'UNKNOWN') + '</span>';
+
+                            // The Fate
+                            var fateHtml = '';
+                            if (session.watched) {
+                                fateHtml = '<span style="color: #4CAF50; font-weight: bold;">Laid to Rest</span>';
+                            } else if (session.totalDurationMs && session.progressMs) {
+                                var progress = parseInt(session.progressMs, 10);
+                                var total = parseInt(session.totalDurationMs, 10);
+                                var percentage = (progress / total) * 100;
+
+                                if (percentage >= 85) {
+                                    fateHtml = '<span style="color: #8bc34a; font-weight: bold;">Near Death</span>';
+                                } else if (percentage >= 50 && percentage < 85) {
+                                    fateHtml = '<span style="color: #ffeb3b;">Lingering</span>';
+                                } else if (percentage >= 20 && percentage < 50) {
+                                    fateHtml = '<span style="color: #9E9E9E; font-style: italic;">Ghosted</span>';
+                                } else {
+                                    fateHtml = '<span style="color: #FF9800; font-weight: bold;">Left for Dead</span>';
+                                }
+                                fateHtml += '<br><span style="font-size:0.75em; color:#555;">' + Math.round(percentage) + '% Complete</span>';
+                            } else {
+                                fateHtml = '<span style="color: #555;">Unknown Fate</span>';
+                            }
+
+                            // Assemble
+                            tr.innerHTML =
+                                '<td style="padding:12px 10px; color:#e0e0e0; font-weight:bold;">' + username + '</td>' +
+                                '<td style="padding:12px 10px; color:#fff;">' + title + '</td>' +
+                                '<td style="padding:12px 10px; color:#aaa;">' + device + '</td>' +
+                                '<td style="padding:12px 10px; color:#aaa; font-size:0.9em;">' + watchDate + '</td>' +
+                                '<td style="padding:12px 10px; font-family:monospace; color:#aaa;">' + formattedDuration + '</td>' +
+                                '<td style="padding:12px 10px;">' + methodHtml + '</td>' +
+                                '<td style="padding:12px 10px;">' + fateHtml + '</td>';
+
+                            tbody.appendChild(tr);
+                        });
+                    }
+
+                    // 3. Fallback Table Builder
+                    function renderFallbackRows(data) {
+                        var tbody = document.getElementById('fallbackTableBody');
+                        tbody.innerHTML = '';
+
+                        // Update Summary Boxes for SQLite
+                        var leaderboardHtml = '';
+                        if (data.Leaderboard) {
+                            data.Leaderboard.forEach(function(l) {
+                                leaderboardHtml += '<li style="margin-bottom: 5px;"><strong>' + l.Name + '</strong> - ' + l.TotalTime + '</li>';
+                            });
+                        }
+                        document.getElementById('leaderboardList').innerHTML = leaderboardHtml || '<li>No active visitors in this timeframe.</li>';
+                        document.getElementById('ghostsList').innerText = (data.Ghosts && data.Ghosts.length > 0) ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
+
+                        var sessions = data.Sessions || [];
+                        if (sessions.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">No local logs found.</td></tr>';
+                            return;
+                        }
+
+                        sessions.forEach(function(s) {
+                            var tr = document.createElement('tr');
+                            tr.style.borderBottom = '1px solid #333';
+                            var methodColor = s.IsTranscode ? '#cf6679' : '#888';
+                            var methodWeight = s.IsTranscode ? 'bold' : 'normal';
+
+                            tr.innerHTML =
+                                '<td style="padding:12px 10px; color:#aaa; font-size:0.9em;">' + (s.Time || 'Unknown') + '</td>' +
+                                '<td style="padding:12px 10px; color:#e0e0e0; font-weight:bold;">' + (s.Visitor || 'Unknown') + '</td>' +
+                                '<td style="padding:12px 10px; color:#fff;">' + (s.Subject || 'Unknown') + '<br><small style="color:#555;">' + (s.Type || '') + '</small></td>' +
+                                '<td style="padding:12px 10px; color:#aaa;">' + (s.Device || 'Unknown') + '</td>' +
+                                '<td style="padding:12px 10px; color:' + methodColor + '; font-weight:' + methodWeight + ';">' + (s.Method || 'Unknown') + '</td>' +
+                                '<td style="padding:12px 10px; font-family:monospace; color:#aaa;">' + (s.Duration || '00:00:00') + '</td>';
+
+                            tbody.appendChild(tr);
+                        });
+                    }
                 };
 
                 // RENDER MEDIA TABLE
@@ -476,7 +595,7 @@
                 var searchTimeout = null;
                 document.getElementById('mediaSearch').addEventListener('input', function(e) {
                     if (searchTimeout) clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(window.fetchAndRenderTable, 500); 
+                    searchTimeout = setTimeout(window.fetchAndRenderTable, 500);
                 });
 
                 document.getElementById('mediaTypeFilter').addEventListener('change', window.fetchAndRenderTable);
@@ -485,7 +604,7 @@
                 document.getElementById('visitorWeeksBack').addEventListener('change', window.fetchAndRenderTable);
 
                 // Initial load
-                window.loadPluginConfig(); 
+                window.loadPluginConfig();
                 window.fetchAndRenderTable();
             });
         })();
