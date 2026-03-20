@@ -192,7 +192,7 @@ namespace JellyfinGraveyardAnalytics.Services
             {
                 IncludeItemTypes = mediaType == "All"
                     ? new[] { Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Series }
-                    : new[] { Enum.Parse<Jellyfin.Data.Enums.BaseItemKind>(mediaType, true) },
+                    : new[] { Enum.TryParse<Jellyfin.Data.Enums.BaseItemKind>(mediaType, true, out var kind) ? kind : Jellyfin.Data.Enums.BaseItemKind.Movie },
                 IsVirtualItem = false,
                 Recursive = true,
                 Tags = new[] { "[Chapel]" }
@@ -214,7 +214,13 @@ namespace JellyfinGraveyardAnalytics.Services
 
             var mappedItems = purgatoryItems.Select(item =>
             {
+                string formattedId = item.Id.ToString("N");
                 long itemSize = 0;
+                int totalPlays = 0;
+                int uniqueUsers = 0;
+                DateTime? lastPlayed = null;
+                long totalDurationSeconds = 0;
+                var playDurations = _repository.GetItemPlayDurations();
 
                 if (item is MediaBrowser.Controller.Entities.TV.Series series)
                 {
@@ -225,14 +231,48 @@ namespace JellyfinGraveyardAnalytics.Services
                         IsVirtualItem = false,
                         Recursive = true
                     };
+                    var children = series.GetRecursiveChildren(null);
+                    var validEpisodes = children.Where(c => c.Path != null).ToList();
+
 
                     var episodes = _libraryManager.GetItemList(episodeQuery);
                     itemSize = episodes.Sum(e => e.Size ?? 0);
+
+                    totalPlays = (playCounts.TryGetValue(formattedId, out int sCount) ? sCount : 0) +
+                                 episodes.Sum(e => playCounts.TryGetValue(e.Id.ToString("N"), out int cCount) ? cCount : 0);
+
+                    var seriesUsers = new HashSet<string>();
+                    if (itemViewers.TryGetValue(formattedId, out var sUsers)) seriesUsers.UnionWith(sUsers);
+
+                    var episodeDates = new List<DateTime>();
+                    if (lastPlayedDates.TryGetValue(formattedId, out var sDate)) episodeDates.Add(sDate);
+
+                    totalDurationSeconds = (playDurations.TryGetValue(formattedId, out long sDur) ? sDur : 0) +
+                               validEpisodes.Sum(e => playDurations.TryGetValue(e.Id.ToString("N"), out long cDur) ? cDur : 0);
+
+                    foreach (var e in episodes)
+                    {
+                        string episodeId = e.Id.ToString("N");
+                        if (itemViewers.TryGetValue(episodeId, out var eUsers)) seriesUsers.UnionWith(eUsers);
+                        if (lastPlayedDates.TryGetValue(episodeId, out var eDate)) episodeDates.Add(eDate);
+                    }
+
+                    uniqueUsers = seriesUsers.Count;
+                    if (episodeDates.Any()) lastPlayed = episodeDates.Max();
                 }
                 else
                 {
                     itemSize = item.Size ?? 0;
+
+                    totalPlays = playCounts.TryGetValue(formattedId, out int count) ? count : 0;
+
+                    if (itemViewers.TryGetValue(formattedId, out var mUsers)) uniqueUsers = mUsers.Count;
+                    if (lastPlayedDates.TryGetValue(formattedId, out var mDate)) lastPlayed = mDate;
+                    if (playDurations.TryGetValue(formattedId, out long mDur)) totalDurationSeconds = mDur;
                 }
+
+                var ts = System.TimeSpan.FromSeconds(totalDurationSeconds);
+                string formattedDuration = $"{(int)System.Math.Floor(ts.TotalHours):D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
 
                 return new JellyfinGraveyardAnalytics.Models.LeastWatchedItem
                 {
@@ -242,7 +282,11 @@ namespace JellyfinGraveyardAnalytics.Services
                     Path = item.Path ?? string.Empty,
                     Size = itemSize,
                     FormattedSize = FormatBytes(itemSize),
-                    DateAdded = item.DateCreated
+                    DateAdded = item.DateCreated,
+                    FormattedDuration = formattedDuration,
+                    PlayCount = totalPlays,
+                    UniqueViewers = uniqueUsers,
+                    LastPlayed = lastPlayed
                 };
             }).ToList();
 
