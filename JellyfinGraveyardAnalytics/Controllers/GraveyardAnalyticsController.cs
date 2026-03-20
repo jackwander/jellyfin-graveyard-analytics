@@ -54,35 +54,71 @@ namespace JellyfinGraveyardAnalytics.Controllers
             _providerManager = providerManager;
         }
 
-        [HttpGet("LeastWatched")]
-        public async Task<IActionResult> GetLeastWatched(
-          [FromQuery] string mediaType = "All",
-          [FromQuery] string? mediaSearch = null,
-          [FromQuery] int limit = 20)
+        private async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetPlaybackStatsAsync()
         {
             var config = Plugin.Instance.Configuration;
-
             if (config.EnableTracearr)
             {
-                try
-                {
-                    // var tracearrData = await _tracearrService.GetStaleMediaAsync(mediaType, mediaSearch, limit);
-                    // return Ok(tracearrData);
-                      return Ok();
-                }
-                catch (Exception ex)
-                {
-                    return BadRequest($"Tracearr Engine Error: {ex.Message}");
-                }
+                var stats = await _tracearrService.GetTracearrPlaybackStatsAsync(52);
+                return (stats.playCounts, stats.itemViewers, stats.lastPlayedDates);
             }
-
-            if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
+            else
             {
-                return BadRequest("CRITICAL ERROR: The Playback Reporting plugin database was not found. Please install Playback Reporting first.");
-            }
+                if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
+                {
+                    throw new Exception("CRITICAL ERROR: The Playback Reporting plugin database was not found.");
+                }
 
-            var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
-            return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit));
+                var playCounts = Plugin.Instance.Repository.GetItemPlayCounts();
+                var itemViewers = Plugin.Instance.Repository.GetItemViewers();
+                var lastPlayedDates = Plugin.Instance.Repository.GetItemLastPlayedDates();
+                return (playCounts, itemViewers, lastPlayedDates);
+            }
+        }
+
+        [HttpGet("LeastWatched")]
+        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20)
+        {
+            try
+            {
+                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync();
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
+                return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("Living")]
+        public async Task<IActionResult> GetLiving([FromQuery] string mediaType = "All", [FromQuery] string? mediaSearch = null, [FromQuery] int limit = 50)
+        {
+            try
+            {
+                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync();
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
+                return Ok(service.GetLivingItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
+        [HttpGet("Purgatory")]
+        public async Task<IActionResult> GetPurgatory([FromQuery] string mediaType = "All", [FromQuery] string? mediaSearch = null, [FromQuery] int limit = 50)
+        {
+            try
+            {
+                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync();
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
+                return Ok(service.GetPurgatoryItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
         }
 
         [HttpPost("LastRites/{itemId}")]
@@ -108,27 +144,6 @@ namespace JellyfinGraveyardAnalytics.Controllers
             {
                 _logger.LogError(ex, "Failed to perform Last Rites on {0}", itemId);
                 return StatusCode(500, "The rite failed: " + ex.Message);
-            }
-        }
-
-        [HttpGet("Purgatory")]
-        public IActionResult GetPurgatory(
-            [FromQuery] string mediaType = "All",
-            [FromQuery] string? mediaSearch = null,
-            [FromQuery] int limit = 50)
-        {
-            if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
-            {
-                return BadRequest("CRITICAL ERROR: The Playback Reporting plugin database was not found. Please install Playback Reporting first.");
-            }
-            try
-            {
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
-                return Ok(service.GetPurgatoryItems(mediaType, mediaSearch, limit));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, ex.Message);
             }
         }
 
@@ -296,20 +311,6 @@ namespace JellyfinGraveyardAnalytics.Controllers
             {
                 return StatusCode(500, ex.Message);
             }
-        }
-
-        [HttpGet("Living")]
-        public IActionResult GetLiving(
-          [FromQuery] string mediaType = "All",
-          [FromQuery] int limit = 50,
-          [FromQuery] string mediaSearch = "")
-        {
-            if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
-            {
-                return BadRequest("CRITICAL ERROR: The Playback Reporting plugin database was not found. Please install Playback Reporting first.");
-            }
-            var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
-            return Ok(service.GetLivingItems(mediaType, limit, mediaSearch));
         }
 
         [HttpGet("Visitors")]

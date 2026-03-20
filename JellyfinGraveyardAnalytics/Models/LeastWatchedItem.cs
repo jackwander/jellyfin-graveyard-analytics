@@ -13,5 +13,6 @@ namespace JellyfinGraveyardAnalytics.Models
         public System.DateTime? LastPlayed { get; set; }
         public long TotalDurationSeconds { get; set; }
         public string FormattedDuration { get; set; } = "00:00:00";
+        public System.DateTime? DateAdded { get; set; }
     }
 }

@@ -26,14 +26,14 @@ namespace JellyfinGraveyardAnalytics.Services
             _userManager = userManager;
         }
 
-        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLeastWatchedItems(string mediaType, string? mediaSearch, int limit)
+        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLeastWatchedItems(
+          string mediaType,
+          string? mediaSearch,
+          int limit,
+          Dictionary<string, int> playCounts,
+          Dictionary<string, HashSet<string>> itemViewers,
+          Dictionary<string, DateTime> lastPlayedDates)
         {
-            var playCounts = _repository.GetItemPlayCounts();
-
-            var itemViewers = _repository.GetItemViewers();
-
-            var lastPlayedDates = _repository.GetItemLastPlayedDates();
-
             var kindList = new List<Jellyfin.Data.Enums.BaseItemKind>();
             if (mediaType == "All")
             {
@@ -146,7 +146,8 @@ namespace JellyfinGraveyardAnalytics.Services
                     UniqueViewers = uniqueUsers,
                     Size = totalSize,
                     FormattedSize = FormatBytes(totalSize),
-                    LastPlayed = lastPlayed
+                    LastPlayed = lastPlayed,
+                    DateAdded = item.DateCreated
                 };
             })
             .Where(x => x != null)
@@ -179,7 +180,13 @@ namespace JellyfinGraveyardAnalytics.Services
             return $"{dblSByte:0.##} {Suffix[i]}";
         }
 
-        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetPurgatoryItems(string mediaType, string? mediaSearch, int limit)
+        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetPurgatoryItems(
+            string mediaType,
+            string? mediaSearch,
+            int limit,
+            Dictionary<string, int> playCounts,
+            Dictionary<string, HashSet<string>> itemViewers,
+            Dictionary<string, DateTime> lastPlayedDates)
         {
             var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
             {
@@ -234,7 +241,8 @@ namespace JellyfinGraveyardAnalytics.Services
                     Type = item is MediaBrowser.Controller.Entities.Movies.Movie ? "Movie" : "Series",
                     Path = item.Path ?? string.Empty,
                     Size = itemSize,
-                    FormattedSize = FormatBytes(itemSize)
+                    FormattedSize = FormatBytes(itemSize),
+                    DateAdded = item.DateCreated
                 };
             }).ToList();
 
@@ -247,11 +255,14 @@ namespace JellyfinGraveyardAnalytics.Services
             };
         }
 
-        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLivingItems(string mediaType, int limit, string? mediaSearch)
+        public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLivingItems(
+            string mediaType,
+            string? mediaSearch,
+            int limit,
+            Dictionary<string, int> playCounts,
+            Dictionary<string, HashSet<string>> itemViewers,
+            Dictionary<string, DateTime> lastPlayedDates)
         {
-            var playCounts = _repository.GetItemPlayCounts();
-            var itemViewers = _repository.GetItemViewers();
-            var lastPlayedDates = _repository.GetItemLastPlayedDates();
             var playDurations = _repository.GetItemPlayDurations();
 
             var kindList = new List<Jellyfin.Data.Enums.BaseItemKind>();
@@ -344,7 +355,8 @@ namespace JellyfinGraveyardAnalytics.Services
                     FormattedSize = FormatBytes(totalSize),
                     LastPlayed = lastPlayed,
                     TotalDurationSeconds = totalDurationSeconds,
-                    FormattedDuration = formattedDuration
+                    FormattedDuration = formattedDuration,
+                    DateAdded = item.DateCreated
                 };
             })
             .Where(x => x != null)

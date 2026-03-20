@@ -127,7 +127,8 @@
                                 <th style="padding: 12px 10px;">Plays</th>
                                 <th style="padding: 12px 10px;">Time Played</th>
                                 <th style="padding: 12px 10px;">Reach</th>
-                                <th style="padding: 12px 10px;">Time of Death</th>
+                                <th style="padding: 12px 10px;">Summoned (Added)</th>
+                                <th style="padding: 12px 10px;">Last Breath (Played)</th>
                                 <th style="padding: 15px 10px; text-align: center;">Actions</th>
                             </tr>
                         </thead>
@@ -135,11 +136,26 @@
                     </table>
                 </div>
 
+                <div id="morgueTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
+                                <th style="padding: 12px 10px;">Subject (Title)</th>
+                                <th style="padding: 12px 10px;">Type</th>
+                                <th style="padding: 12px 10px;">Size</th>
+                                <th style="padding: 12px 10px;">Summoned (Added)</th>
+                                <th style="padding: 15px 10px; text-align: center;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="morgueTableBody"></tbody>
+                    </table>
+                </div>
+
                 <div id="tracearrTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #00bcd4; overflow-x: auto;">
                     <table style="width: 100%; text-align: left; border-collapse: collapse;">
                         <thead>
                             <tr style="border-bottom: 2px solid #00bcd4; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
-                                <th style="padding: 12px 10px; color: #00bcd4;">Visitor (The Sinner)</th>
+                                <th style="padding: 12px 10px; color: #00bcd4;">Visitor</th>
                                 <th style="padding: 12px 10px;">The Relic (Media)</th>
                                 <th style="padding: 12px 10px;">The Vessel (Device)</th>
                                 <th style="padding: 12px 10px;">Time of Disturbance</th>
@@ -153,6 +169,7 @@
                 </div>
 
                 <div id="fallbackTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
+                    <h3 style="color: #4CAF50; margin-top: 0; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">Local Playback Logs (Legacy)</h3>
                     <table style="width: 100%; text-align: left; border-collapse: collapse;">
                         <thead>
                             <tr style="border-bottom: 2px solid #4CAF50; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
@@ -270,12 +287,10 @@
                         confMsg.style.display = 'inline';
                         setTimeout(function() { confMsg.style.display = 'none'; }, 3000);
 
-                        // Show or hide the tracearr tab dynamically based on the new saved state
                         if (isEnabled) {
                             document.getElementById('tabTracearr').style.display = 'inline-block';
                         } else {
                             document.getElementById('tabTracearr').style.display = 'none';
-                            // If they turn it off while ON the tracearr tab, boot them back to settings
                             if (window.currentTab === 'tracearr') {
                                 window.switchTab('settings');
                             }
@@ -292,12 +307,14 @@
 
                 var mediaTopCard = document.getElementById('mediaTopCard');
                 var mediaFilters = document.getElementById('mediaFilters');
+
                 var mediaTableContainer = document.getElementById('mediaTableContainer');
+                var morgueTableContainer = document.getElementById('morgueTableContainer');
+                var tracearrTableContainer = document.getElementById('tracearrTableContainer');
+                var fallbackTableContainer = document.getElementById('fallbackTableContainer');
 
                 var visitorSummary = document.getElementById('visitorSummary');
                 var visitorFilters = document.getElementById('visitorFilters');
-                var tracearrTableContainer = document.getElementById('tracearrTableContainer');
-                var fallbackTableContainer = document.getElementById('fallbackTableContainer');
 
                 var settingsContainer = document.getElementById('settingsContainer');
                 var tracearrContainer = document.getElementById('tracearrContainer');
@@ -308,10 +325,11 @@
                 mediaTopCard.style.display = 'none';
                 mediaFilters.style.display = 'none';
                 mediaTableContainer.style.display = 'none';
-                visitorSummary.style.display = 'none';
-                visitorFilters.style.display = 'none';
+                morgueTableContainer.style.display = 'none';
                 tracearrTableContainer.style.display = 'none';
                 fallbackTableContainer.style.display = 'none';
+                visitorSummary.style.display = 'none';
+                visitorFilters.style.display = 'none';
                 settingsContainer.style.display = 'none';
                 tracearrContainer.style.display = 'none';
 
@@ -321,6 +339,7 @@
                     visitorFilters.style.display = 'flex';
                     pageTitle.innerText = "THE GUESTBOOK";
                     pageDesc.innerText = "Monitor server traffic, review playback sessions, and track the lingering ghosts.";
+
                     window.fetchAndRenderTable();
 
                 } else if (tabName === 'settings') {
@@ -340,11 +359,17 @@
                 } else {
                     mediaTopCard.style.display = 'flex';
                     mediaFilters.style.display = 'flex';
-                    mediaTableContainer.style.display = 'block';
 
-                    if (tabName === 'living') document.getElementById('tabLiving').classList.add('active-tab');
-                    if (tabName === 'morgue') document.getElementById('tabMorgue').classList.add('active-tab');
-                    if (tabName === 'chapel') document.getElementById('tabChapel').classList.add('active-tab');
+                    if (tabName === 'living') {
+                        document.getElementById('tabLiving').classList.add('active-tab');
+                        mediaTableContainer.style.display = 'block';
+                    } else if (tabName === 'morgue') {
+                        document.getElementById('tabMorgue').classList.add('active-tab');
+                        morgueTableContainer.style.display = 'block';
+                    } else if (tabName === 'chapel') {
+                        document.getElementById('tabChapel').classList.add('active-tab');
+                        mediaTableContainer.style.display = 'block';
+                    }
 
                     pageTitle.innerText = "THE GRAVEYARD";
                     pageDesc.innerText = "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.";
@@ -385,7 +410,6 @@
 
             view.addEventListener('viewshow', function () {
 
-                // UPDATED: DUAL RENDERER FOR VISITOR TABLE
                 window.renderVisitorTable = function(response) {
                     var isTracearr = !!response.data;
 
@@ -393,20 +417,18 @@
                     var fallbackCont = document.getElementById('fallbackTableContainer');
                     var summaryCont = document.getElementById('visitorSummary');
 
-                    // 1. Toggle Visibility based on the engine
                     if (isTracearr) {
                         tracearrCont.style.display = 'block';
                         fallbackCont.style.display = 'none';
-                        summaryCont.style.display = 'none'; // Tracearr doesn't use the simple summary boxes
+                        summaryCont.style.display = 'none';
                         renderTracearrRows(response.data);
                     } else {
                         tracearrCont.style.display = 'none';
                         fallbackCont.style.display = 'block';
-                        summaryCont.style.display = 'flex'; // SQLite uses summary boxes
+                        summaryCont.style.display = 'flex';
                         renderFallbackRows(response);
                     }
 
-                    // 2. Tracearr Table Builder
                     function renderTracearrRows(items) {
                         var tbody = document.getElementById('tracearrTableBody');
                         tbody.innerHTML = '';
@@ -420,30 +442,20 @@
                             var tr = document.createElement('tr');
                             tr.style.borderBottom = '1px solid #222';
 
-                            // The Sinner
                             var username = session.user && session.user.username ? session.user.username : 'Unknown Entity';
-
-                            // The Relic
                             var title = session.showTitle ? (session.showTitle + ' - ' + session.mediaTitle) : (session.mediaTitle || 'Unknown Relic');
-
-                            // The Vessel
                             var device = session.device + '<br><small style="color:#555;">' + (session.player || 'Unknown Player') + '</small>';
-
-                            // Time of Disturbance
                             var watchDate = session.startedAt ? new Date(session.startedAt).toLocaleString() : 'Unknown Date';
 
-                            // Duration Math
                             var totalSec = Math.floor((session.durationMs || 0) / 1000);
                             var h = Math.floor(totalSec / 3600);
                             var m = Math.floor((totalSec % 3600) / 60);
                             var s = totalSec % 60;
                             var formattedDuration = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
 
-                            // Method
                             var isTranscode = session.isTranscode;
                             var methodHtml = '<span style="color:' + (isTranscode ? '#cf6679' : '#888') + '; font-weight:' + (isTranscode ? 'bold' : 'normal') + ';">' + (session.videoDecision ? session.videoDecision.toUpperCase() : 'UNKNOWN') + '</span>';
 
-                            // The Fate
                             var fateHtml = '';
                             if (session.watched) {
                                 fateHtml = '<span style="color: #4CAF50; font-weight: bold;">Laid to Rest</span>';
@@ -466,7 +478,6 @@
                                 fateHtml = '<span style="color: #555;">Unknown Fate</span>';
                             }
 
-                            // Assemble
                             tr.innerHTML =
                                 '<td style="padding:12px 10px; color:#e0e0e0; font-weight:bold;">' + username + '</td>' +
                                 '<td style="padding:12px 10px; color:#fff;">' + title + '</td>' +
@@ -480,12 +491,10 @@
                         });
                     }
 
-                    // 3. Fallback Table Builder
                     function renderFallbackRows(data) {
                         var tbody = document.getElementById('fallbackTableBody');
                         tbody.innerHTML = '';
 
-                        // Update Summary Boxes for SQLite
                         var leaderboardHtml = '';
                         if (data.Leaderboard) {
                             data.Leaderboard.forEach(function(l) {
@@ -520,41 +529,71 @@
                     }
                 };
 
-                // RENDER MEDIA TABLE
                 window.renderMediaTable = function(items) {
-                    var tbody = document.getElementById('leastWatchedTableBody');
+                    var isMorgue = window.currentTab === 'morgue';
+                    var tbody = isMorgue ? document.getElementById('morgueTableBody') : document.getElementById('leastWatchedTableBody');
+
                     tbody.innerHTML = '';
+
                     items.forEach(function(item) {
                         var tr = document.createElement('tr');
                         tr.style.borderBottom = '1px solid #333';
+
                         var playCountColor = item.PlayCount === 0 ? '#cf6679' : '#888';
                         var nameWeight = item.PlayCount === 0 ? 'bold' : 'normal';
                         var baseUrl = window.parent.location.origin + window.parent.location.pathname;
                         var itemUrl = baseUrl + '#/details?id=' + item.MediaId;
-                        var twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-                        var isDead = false; var dateText = "Never";
 
-                        if (item.LastPlayed) {
-                            var lpDate = new Date(item.LastPlayed);
-                            dateText = lpDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-                            if (lpDate < twelveMonthsAgo) isDead = true;
-                        } else { isDead = true; }
-                        var timeOfDeathColor = isDead ? '#cf6679' : '#aaa';
+                        // Date Added Math
+                        var dateAddedText = "Unknown";
+                        if (item.DateAdded) {
+                            dateAddedText = new Date(item.DateAdded).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+                        }
 
+                        // Last Played Math (Only needed for Full Table)
+                        var lastPlayedText = "Never";
+                        var timeOfDeathColor = '#aaa';
+                        var isDead = false;
+                        if (!isMorgue) {
+                            var twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+                            if (item.LastPlayed) {
+                                var lpDate = new Date(item.LastPlayed);
+                                lastPlayedText = lpDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+                                if (lpDate < twelveMonthsAgo) isDead = true;
+                            } else { isDead = true; }
+                            timeOfDeathColor = isDead ? '#cf6679' : '#aaa';
+                        }
+
+                        // Actions logic
                         var actionButtons = (window.currentTab === 'living' || window.currentTab === 'morgue') ?
                             '<button onclick="window.condemnSubject(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn" style="border-color: #ff9800; color: #ff9800;">Condemn</button>' :
                             '<button onclick="window.pardonSubject(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn" style="border-color: #4CAF50; color: #4CAF50; margin-right: 5px;">Pardon</button>' +
                             '<button onclick="window.performLastRites(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn">Exorcise</button>';
 
-                        tr.innerHTML =
-                          '<td style="padding: 15px 10px;"><a href="' + itemUrl + '" target="_top" style="color: #e0e0e0; font-weight: ' + nameWeight + '; text-decoration: none; border-bottom: 1px dashed #444;">' + item.Name + '</a></td>' +
-                          '<td style="padding: 15px 10px; color: #aaa;">' + item.Type + '</td>' +
-                          '<td style="padding: 15px 10px; font-family: monospace; color: #aaa;">' + item.FormattedSize + '</td>' +
-                          '<td style="padding: 15px 10px; color: ' + playCountColor + ';">' + item.PlayCount + '</td>' +
-                          '<td style="padding: 15px 10px; color: #888; font-family: monospace;">' + (item.FormattedDuration || '00:00:00') + '</td>' +
-                          '<td style="padding: 15px 10px; color: ' + (item.UniqueViewers === 1 ? '#ff9800' : '#aaa') + ';">' + item.UniqueViewers + ' <span style="font-size:0.8em; color:#555;">Souls</span></td>' +
-                          '<td style="padding: 15px 10px; color: ' + timeOfDeathColor + '; font-style: ' + (isDead ? 'italic' : 'normal') + ';">' + dateText + '</td>' +
-                          '<td style="padding: 10px; text-align: center; white-space: nowrap;">' + actionButtons + '</td>';
+                        // Build the Row String
+                        var rowHtml =
+                            '<td style="padding: 15px 10px;"><a href="' + itemUrl + '" target="_top" style="color: #e0e0e0; font-weight: ' + nameWeight + '; text-decoration: none; border-bottom: 1px dashed #444;">' + item.Name + '</a></td>' +
+                            '<td style="padding: 15px 10px; color: #aaa;">' + item.Type + '</td>' +
+                            '<td style="padding: 15px 10px; font-family: monospace; color: #aaa;">' + item.FormattedSize + '</td>';
+
+                        // Inject the extra stats for Living/Chapel
+                        if (!isMorgue) {
+                            rowHtml +=
+                                '<td style="padding: 15px 10px; color: ' + playCountColor + ';">' + item.PlayCount + '</td>' +
+                                '<td style="padding: 15px 10px; color: #888; font-family: monospace;">' + (item.FormattedDuration || '00:00:00') + '</td>' +
+                                '<td style="padding: 15px 10px; color: ' + (item.UniqueViewers === 1 ? '#ff9800' : '#aaa') + ';">' + item.UniqueViewers + ' <span style="font-size:0.8em; color:#555;">Souls</span></td>';
+                        }
+
+                        // Add the standard trailing columns
+                        rowHtml += '<td style="padding: 15px 10px; color: #aaa;">' + dateAddedText + '</td>';
+
+                        if (!isMorgue) {
+                             rowHtml += '<td style="padding: 15px 10px; color: ' + timeOfDeathColor + '; font-style: ' + (isDead ? 'italic' : 'normal') + ';">' + lastPlayedText + '</td>';
+                        }
+
+                        rowHtml += '<td style="padding: 10px; text-align: center; white-space: nowrap;">' + actionButtons + '</td>';
+
+                        tr.innerHTML = rowHtml;
                         tbody.appendChild(tr);
                     });
                 };
@@ -605,7 +644,7 @@
 
                 // Initial load
                 window.loadPluginConfig();
-                window.fetchAndRenderTable();
+                window.switchTab('morgue');
             });
         })();
     </script>
