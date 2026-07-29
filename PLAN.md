@@ -150,6 +150,18 @@ from this plan.
 `Jellyfin.Controller 10.11.*-*` and `Jellyfin.Model` restored; `net9.0` output
 at `bin/Release/net9.0/JellyfinGraveyardAnalyticsPlugin.dll`.
 
+> **Correction (Phase 3).** That baseline was **not reproducible from a clean
+> checkout** and the claim above was too strong. `git archive HEAD` into an empty
+> directory plus `dotnet build -c Release` failed:
+> `AnalyticsService.cs(429,41): error CS1061: 'IUserManager' does not contain a
+> definition for 'Users'`. The floating `10.11.*-*` now resolves to **10.11.11**,
+> which removed that member; every local build passed only because
+> `obj/project.assets.json` still pinned **10.11.6**. The reference is now pinned
+> to `10.11.6` in the csproj (pulled forward from Phase 6) and a clean checkout
+> builds `0 warnings / 0 errors`. Phase 6 decides whether to move to the newer
+> API. `AnalyticsService.cs:429` is pre-existing code, untouched by any phase
+> here.
+
 **No live server.** No Jellyfin process, no listener on 8096/8920, no Jellyfin
 data dir, and only the `10.0.4` runtime is installed (no `net9.0` runtime), so
 the plugin cannot be *loaded* locally — only built. Claims 1 and 6 were
@@ -216,8 +228,11 @@ read:
    harness as Phase 0): fresh install → **401** with no header, an empty header,
    or any header; key set → 401 for no header / wrong header / a *prefix* of the
    key; correct header → 501; and the correct key passed only as `?token=` →
-   **401**, so the old query-string vector is closed. `payload` is now nullable
-   so authentication runs before model validation.
+   **401**, so the old query-string vector is closed. `payload` is now nullable,
+   so a missing or empty body reaches the auth check first — but malformed JSON
+   still returns 400 and a wrong content-type 415 from the framework *before* the
+   action runs. Neither leaks anything; the earlier blanket claim that
+   "authentication runs before model validation" was too broad.
 3. **Error bodies.** All eight `ex.Message` returns are gone. Every failure path
    logs the exception server-side and returns a literal
    (`GenericFailure = "The request failed. Check the Jellyfin server log for
@@ -362,6 +377,97 @@ signature finding 1 predicted.
 `Plays 0`; `Total Dead Weight` equals the sum of displayed rows; a fresh
 Playback Reporting install shows the coverage banner instead of the whole
 library.
+
+#### Phase 3 results
+
+Clean build, 0 warnings, and reproducible from a clean checkout for the first
+time (see the Phase 0 correction above).
+
+- **Item 9 done (D2).** `MinPlayDurationSeconds` is a parameter on all four
+  aggregates, passed as a Dapper parameter rather than interpolated. The 120/300
+  split is gone and the two unfiltered queries — last-played and durations — now
+  filter too, which is what allowed `Plays 3 / Reach 0` and
+  `Last Breath: yesterday / Plays 0`.
+- **Item 10 done.** `GetItemPlayDurations()` is hoisted out of the `Select`
+  lambda in `GetPurgatoryItems` (it was a full-table `SUM…GROUP BY` re-running
+  once per Chapel item). The duplicate episode fetch is gone: the method ran
+  *both* an `InternalItemsQuery` and `GetRecursiveChildren` and then mixed them —
+  size and plays from one list, durations from the other. One list now, filtered
+  on `BaseItemKind.Episode`.
+- **Item 11 done.** One `FormatBytes`, now `public static`. Verified against the
+  built assembly next to the old implementation copied from `71a01f7`:
+
+  | input | old | new |
+  | --- | --- | --- |
+  | 1 TB | `1 TB` | `1 TB` |
+  | **1 PB** | **`IndexOutOfRangeException`** | `1 PB` |
+  | 1 EB | `IndexOutOfRangeException` | `1 EB` |
+  | `long.MaxValue` | `IndexOutOfRangeException` | `8 EB` |
+  | -2048 | `-2048 B` | `-2 KB` |
+
+  Identical output from 0 B through 5 TB, so the fix is not a reformat. Scaling
+  happens in `double` (no mid-loop integer division) and the suffix index can no
+  longer leave the array.
+- **Item 12 done (D1).** Morgue is `PlayCount == 0 && DateAdded <= UtcNow -
+  effectiveGrace`, with `MorgueGraceDays` (default 180) clamped by
+  `Repository.GetHistoryFloorDate()`. `Total Dead Weight` is the sum of the rows
+  actually returned, so header and table finally describe one set. The response
+  carries `CoverageDays`, `EffectiveGraceDays`, `ConfiguredGraceDays` and
+  `UnverifiableItemCount`; the dashboard renders a banner from them and gained
+  the "Include barely-touched (≤ 2 plays)" toggle, plus a **Plays column in the
+  Morgue table** — with the toggle on, a played row would otherwise be
+  indistinguishable from a zero-play one.
+- **Item 13 done.** The `GroupBy(name.ToLower())` that collapsed
+  The Thing (1982) into The Thing (2011) is replaced by a key of
+  `(Name, ProductionYear, BaseItemKind)`. Query construction and
+  search+dedupe are now two shared helpers (`BuildMediaQuery`,
+  `ApplySearchAndDedupe`) used by all three media views, which also fixes the
+  Sanctuary silently not applying `SearchTerm` to its query.
+- **Item 14 done.** `GetRawPlaybackActivity` takes a `GuestbookRowLimit`
+  (default 5000, clamped 100–50000), fetches one row past the cap to detect
+  truncation, and returns a `Truncated` flag that the Guestbook surfaces as a
+  notice saying the leaderboard and ghosts cover only the returned rows. The
+  window is UTC end to end — bounds were being formatted from local time against
+  naive-UTC storage, shifting every query by the server's offset.
+
+Config keys added: `MinPlayDurationSeconds`, `MorgueGraceDays`,
+`GuestbookRowLimit`, each clamped in its setter. **Deviation from the config
+table:** `MinPlayDurationSeconds` has an effective range of 1–3600, not 0–3600.
+A config written before the key existed deserializes as `0`, indistinguishable
+from a deliberate zero, and honouring it as "no floor" would silently restore
+the unfiltered aggregates this setting exists to fix.
+
+Dashboard suites: **22/22** and **9/9**, now covering the coverage banner in all
+three states and the widened Morgue row.
+
+#### D1 — a contradiction found while implementing it, needs a decision
+
+`effectiveGrace = min(MorgueGraceDays, coverageDays)` is implemented as locked,
+but **the formula works against its own stated purpose** and I did not want to
+quietly "fix" a locked decision.
+
+D1 introduces the clamp to stop a young database flooding the Morgue with the
+pre-install library. But shrinking the grace period *loosens* the age test, so
+less history admits **more** items, not fewer:
+
+| history coverage | effective grace | items needing to be older than | effect |
+| --- | --- | --- | --- |
+| 400 days | 180 | 180 days | intended |
+| 20 days | 20 | **20 days** | nearly the whole library qualifies |
+| 0 days | 0 | **now** | *everything* qualifies |
+
+Two mitigations are in place, neither of which is the missing rule:
+
+1. Zero coverage returns an **empty** Morgue with an explanatory banner, because
+   returning the entire library there is indefensible.
+2. `UnverifiableItemCount` counts returned rows added before the history floor,
+   and the banner discloses it.
+
+The rule that would actually match D1's rationale is a floor gate —
+`DateCreated >= historyFloor`, i.e. only judge items the history could have
+observed — either replacing the clamp or alongside it. That inverts which items
+appear on a young database, so it is a product call, not a refactor. **Flagged
+for decision; not implemented.**
 
 ### Phase 4 — Performance
 

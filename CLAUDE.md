@@ -11,7 +11,7 @@ commit `71a01f7` — 23 findings with `file:line` refs, two locked decisions (D1
 Morgue definition, D2 play threshold), and eight phases with done-when criteria.
 Do not re-derive the findings or re-litigate D1/D2.
 
-Current position: **Phases 0 and 1 done (2026-07-30); Phase 2 is next.** Phases
+Current position: **Phases 0, 1, 3 done; Phase 2 all but item 7 (needs a Tracearr API key). Phase 4 is next.** Phases
 run in order. Results and evidence for each finished phase are recorded in
 `PLAN.md` under a "Phase N results" heading — read those before reopening a
 finding.

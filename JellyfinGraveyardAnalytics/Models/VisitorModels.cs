@@ -26,5 +26,17 @@ namespace JellyfinGraveyardAnalytics.Models
         public List<VisitorSession> Sessions { get; set; } = new();
         public List<VisitorLeaderboardEntry> Leaderboard { get; set; } = new();
         public List<string> Ghosts { get; set; } = new();
+
+        /// <summary>
+        /// True when the row cap cut the result short, so the UI can say the window is
+        /// partial instead of presenting it as the whole timeframe. The leaderboard and
+        /// ghosts are derived from the returned rows, so they are partial too.
+        /// </summary>
+        public bool Truncated { get; set; }
+
+        /// <summary>
+        /// The cap that was applied, for the truncation notice.
+        /// </summary>
+        public int RowLimit { get; set; }
     }
 }

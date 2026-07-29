@@ -76,7 +76,7 @@ namespace JellyfinGraveyardAnalytics.Database
             return new HashSet<string>(ids);
         }
 
-        public System.Collections.Generic.Dictionary<string, int> GetItemPlayCounts()
+        public System.Collections.Generic.Dictionary<string, int> GetItemPlayCounts(int minPlayDurationSeconds)
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
@@ -84,9 +84,9 @@ namespace JellyfinGraveyardAnalytics.Database
                 SELECT ItemId, COUNT(*) as PlayCount
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL
-                AND PlayDuration >= 120
+                AND PlayDuration >= @MinPlayDuration
                 GROUP BY ItemId
-            ");
+            ", new { MinPlayDuration = minPlayDurationSeconds });
 
             var dict = new System.Collections.Generic.Dictionary<string, int>();
 
@@ -102,15 +102,16 @@ namespace JellyfinGraveyardAnalytics.Database
             return dict;
         }
 
-        public System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> GetItemViewers()
+        public System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>> GetItemViewers(int minPlayDurationSeconds)
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
             var results = Dapper.SqlMapper.Query(connection, @"
                 SELECT ItemId, UserId
                 FROM PlaybackActivity
-                WHERE ItemId IS NOT NULL AND UserId IS NOT NULL AND PlayDuration > 300
-            ");
+                WHERE ItemId IS NOT NULL AND UserId IS NOT NULL
+                AND PlayDuration >= @MinPlayDuration
+            ", new { MinPlayDuration = minPlayDurationSeconds });
 
             var viewerMap = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>>();
 
@@ -135,16 +136,19 @@ namespace JellyfinGraveyardAnalytics.Database
             return viewerMap;
         }
 
-        public System.Collections.Generic.Dictionary<string, System.DateTime> GetItemLastPlayedDates()
+        public System.Collections.Generic.Dictionary<string, System.DateTime> GetItemLastPlayedDates(int minPlayDurationSeconds)
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
+            // Without this filter a 10-second check bumps "Last Breath" and shields the
+            // item from every time-based rule.
             var results = Dapper.SqlMapper.Query(connection, @"
                 SELECT ItemId, MAX(DateCreated) as LastPlayedDate
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL
+                AND PlayDuration >= @MinPlayDuration
                 GROUP BY ItemId
-            ");
+            ", new { MinPlayDuration = minPlayDurationSeconds });
 
             var dict = new System.Collections.Generic.Dictionary<string, System.DateTime>();
 
@@ -163,7 +167,7 @@ namespace JellyfinGraveyardAnalytics.Database
             return dict;
         }
 
-        public System.Collections.Generic.Dictionary<string, long> GetItemPlayDurations()
+        public System.Collections.Generic.Dictionary<string, long> GetItemPlayDurations(int minPlayDurationSeconds)
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
@@ -171,8 +175,9 @@ namespace JellyfinGraveyardAnalytics.Database
                 SELECT ItemId, SUM(PlayDuration) as TotalDuration
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL
+                AND PlayDuration >= @MinPlayDuration
                 GROUP BY ItemId
-            ");
+            ", new { MinPlayDuration = minPlayDurationSeconds });
 
             var dict = new System.Collections.Generic.Dictionary<string, long>();
 
@@ -188,11 +193,45 @@ namespace JellyfinGraveyardAnalytics.Database
             return dict;
         }
 
-        public IEnumerable<dynamic> GetRawPlaybackActivity(System.DateTime startDate, System.DateTime endDate)
+        /// <summary>
+        /// Oldest activity Playback Reporting knows about, or null on an empty database.
+        /// Everything before this date is invisible to us: an item added earlier reads as
+        /// zero-play whether it was watched or not, which is why the Morgue grace period is
+        /// clamped to this coverage.
+        /// </summary>
+        public System.DateTime? GetHistoryFloorDate()
         {
             using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
 
-            return Dapper.SqlMapper.Query(connection, @"
+            var floor = Dapper.SqlMapper.QuerySingleOrDefault<string?>(
+                connection, "SELECT MIN(DateCreated) FROM PlaybackActivity");
+
+            if (string.IsNullOrWhiteSpace(floor))
+            {
+                return null;
+            }
+
+            return System.DateTime.TryParse(
+                floor,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal,
+                out var parsed)
+                ? parsed
+                : null;
+        }
+
+        /// <summary>
+        /// Guestbook rows, newest first, capped at <paramref name="rowLimit"/>. Returns
+        /// whether the cap truncated the result so the caller can say so rather than
+        /// presenting a partial window as complete.
+        /// </summary>
+        public (List<dynamic> Rows, bool Truncated) GetRawPlaybackActivity(
+            System.DateTime startDate, System.DateTime endDate, int rowLimit)
+        {
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection(_playbackDbConn);
+
+            // One row over the cap: if it comes back, there was more to show.
+            var rows = Dapper.SqlMapper.Query(connection, @"
                 SELECT
                     DateCreated,
                     UserId,
@@ -200,12 +239,42 @@ namespace JellyfinGraveyardAnalytics.Database
                     ItemType,
                     ClientName,
                     DeviceName,
-                    PlaybackMethod, -- FIXED THIS COLUMN NAME
+                    PlaybackMethod,
                     PlayDuration
                 FROM PlaybackActivity
                 WHERE DateCreated >= @Start AND DateCreated <= @End
-                ORDER BY DateCreated DESC",
-                new { Start = startDate.ToString("yyyy-MM-dd HH:mm:ss"), End = endDate.ToString("yyyy-MM-dd HH:mm:ss") });
+                ORDER BY DateCreated DESC
+                LIMIT @Limit",
+                new
+                {
+                    Start = FormatSqliteUtc(startDate),
+                    End = FormatSqliteUtc(endDate),
+                    Limit = rowLimit + 1
+                }).ToList();
+
+            if (rows.Count > rowLimit)
+            {
+                rows.RemoveRange(rowLimit, rows.Count - rowLimit);
+                return (rows, true);
+            }
+
+            return (rows, false);
+        }
+
+        /// <summary>
+        /// Playback Reporting stores naive UTC strings, so a local-time bound would shift
+        /// the window by the server's offset.
+        /// </summary>
+        private static string FormatSqliteUtc(System.DateTime value)
+        {
+            var utc = value.Kind switch
+            {
+                System.DateTimeKind.Utc => value,
+                System.DateTimeKind.Local => value.ToUniversalTime(),
+                _ => System.DateTime.SpecifyKind(value, System.DateTimeKind.Utc)
+            };
+
+            return utc.ToString("yyyy-MM-dd HH:mm:ss", System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

@@ -67,12 +67,43 @@ namespace JellyfinGraveyardAnalytics.Controllers
             _providerManager = providerManager;
         }
 
+        /// <summary>
+        /// How far back the Tracearr history aggregate reaches. Doubles as the coverage
+        /// bound for the Morgue grace clamp on that engine (D1).
+        /// </summary>
+        private const int TracearrHistoryWeeks = 52;
+
+        /// <summary>
+        /// Oldest playback activity the active engine can see, or null when there is none.
+        /// Playback Reporting knows its own floor; on Tracearr the aggregate is bounded by
+        /// the weeks we ask for, so that window is the floor.
+        /// </summary>
+        private DateTime? GetHistoryFloorUtc()
+        {
+            if (Plugin.Instance.Configuration.EnableTracearr)
+            {
+                return DateTime.UtcNow.AddDays(-7 * TracearrHistoryWeeks);
+            }
+
+            try
+            {
+                return Plugin.Instance.Repository.GetHistoryFloorDate();
+            }
+            catch (Exception ex)
+            {
+                // Treated as "no history", which yields an empty Morgue and a banner rather
+                // than a library-wide list of unverifiable claims.
+                _logger.LogWarning(ex, "Could not read the playback history floor.");
+                return null;
+            }
+        }
+
         private async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetPlaybackStatsAsync(CancellationToken cancellationToken)
         {
             var config = Plugin.Instance.Configuration;
             if (config.EnableTracearr)
             {
-                var stats = await _tracearrService.GetTracearrPlaybackStatsAsync(52, cancellationToken).ConfigureAwait(false);
+                var stats = await _tracearrService.GetTracearrPlaybackStatsAsync(TracearrHistoryWeeks, cancellationToken).ConfigureAwait(false);
                 return (stats.playCounts, stats.itemViewers, stats.lastPlayedDates);
             }
             else
@@ -82,21 +113,30 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     throw new PlaybackDataUnavailableException(PlaybackUnavailableMessage);
                 }
 
-                var playCounts = Plugin.Instance.Repository.GetItemPlayCounts();
-                var itemViewers = Plugin.Instance.Repository.GetItemViewers();
-                var lastPlayedDates = Plugin.Instance.Repository.GetItemLastPlayedDates();
+                var threshold = Plugin.Instance.Configuration.MinPlayDurationSeconds;
+                var playCounts = Plugin.Instance.Repository.GetItemPlayCounts(threshold);
+                var itemViewers = Plugin.Instance.Repository.GetItemViewers(threshold);
+                var lastPlayedDates = Plugin.Instance.Repository.GetItemLastPlayedDates(threshold);
                 return (playCounts, itemViewers, lastPlayedDates);
             }
         }
 
         [HttpGet("LeastWatched")]
-        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, [FromQuery] bool includeBarelyTouched = false, CancellationToken cancellationToken = default)
         {
             try
             {
                 var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
-                return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
+                return Ok(service.GetLeastWatchedItems(
+                    mediaType,
+                    mediaSearch,
+                    limit,
+                    playCounts,
+                    itemViewers,
+                    lastPlayedDates,
+                    includeBarelyTouched,
+                    GetHistoryFloorUtc()));
             }
             catch (PlaybackDataUnavailableException ex)
             {
@@ -116,7 +156,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
             try
             {
                 var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
                 return Ok(service.GetLivingItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
             catch (PlaybackDataUnavailableException ex)
@@ -137,7 +177,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
             try
             {
                 var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
                 return Ok(service.GetPurgatoryItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
             catch (PlaybackDataUnavailableException ex)
@@ -385,7 +425,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     return BadRequest(new { message = PlaybackUnavailableMessage });
                 }
 
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
+                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
                 return Ok(service.GetVisitorActivity(endDate, weeksBack));
             }
             catch (Exception ex)

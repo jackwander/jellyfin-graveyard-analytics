@@ -89,7 +89,11 @@ namespace JellyfinGraveyardAnalytics.Api
                 return Unauthorized();
             }
 
-            var configuredKey = config.TracearrApiKey;
+            // Trimmed: an HTTP field value loses surrounding whitespace in transit, so a key
+            // pasted with a trailing space would compare 6 bytes against 7 and never match,
+            // while every outbound call kept working (Headers.Add trims too) — a silent,
+            // webhook-only failure that reads like Tracearr's fault in the log.
+            var configuredKey = config.TracearrApiKey.Trim();
 
             if (!Request.Headers.TryGetValue(WebhookTokenHeader, out var presented)
                 || presented.Count != 1

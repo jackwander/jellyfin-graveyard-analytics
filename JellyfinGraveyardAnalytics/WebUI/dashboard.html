@@ -95,7 +95,13 @@
                             <option value="100">100</option>
                         </select>
                     </div>
+                    <div id="barelyTouchedFilter" style="display: none; align-items: center;">
+                        <input type="checkbox" id="includeBarelyTouched" style="margin-right: 6px; cursor: pointer;">
+                        <label for="includeBarelyTouched" style="color:#aaa; cursor: pointer;">Include barely-touched (&le; 2 plays)</label>
+                    </div>
                 </div>
+
+                <div id="coverageBanner" style="display: none; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; color: #ccc; font-size: 0.9em;"></div>
 
                 <div id="visitorFilters" style="display: none; margin-bottom: 15px; align-items: center; gap: 20px; flex-wrap: wrap;">
                     <div>
@@ -143,6 +149,7 @@
                                 <th style="padding: 12px 10px;">Subject (Title)</th>
                                 <th style="padding: 12px 10px;">Type</th>
                                 <th style="padding: 12px 10px;">Size</th>
+                                <th style="padding: 12px 10px;">Plays</th>
                                 <th style="padding: 12px 10px;">Summoned (Added)</th>
                                 <th style="padding: 15px 10px; text-align: center;">Actions</th>
                             </tr>
@@ -375,6 +382,8 @@
 
                 mediaTopCard.style.display = 'none';
                 mediaFilters.style.display = 'none';
+                document.getElementById('barelyTouchedFilter').style.display = 'none';
+                document.getElementById('coverageBanner').style.display = 'none';
                 mediaTableContainer.style.display = 'none';
                 morgueTableContainer.style.display = 'none';
                 tracearrTableContainer.style.display = 'none';
@@ -417,6 +426,7 @@
                     } else if (tabName === 'morgue') {
                         document.getElementById('tabMorgue').classList.add('active-tab');
                         morgueTableContainer.style.display = 'block';
+                        document.getElementById('barelyTouchedFilter').style.display = 'flex';
                     } else if (tabName === 'chapel') {
                         document.getElementById('tabChapel').classList.add('active-tab');
                         mediaTableContainer.style.display = 'block';
@@ -580,6 +590,15 @@
                             return;
                         }
 
+                        if (data.Truncated) {
+                            var notice = document.createElement('tr');
+                            var noticeCell = td('padding:10px; color:#ff9800; font-size:0.9em;',
+                                'Showing the most recent ' + data.RowLimit + ' sessions — the timeframe holds more, so the leaderboard and ghosts below cover only these rows.');
+                            noticeCell.colSpan = 6;
+                            notice.appendChild(noticeCell);
+                            tbody.appendChild(notice);
+                        }
+
                         sessions.forEach(function(s) {
                             var tr = document.createElement('tr');
                             tr.style.borderBottom = '1px solid #333';
@@ -601,6 +620,40 @@
                             tbody.appendChild(tr);
                         });
                     }
+                };
+
+                // Says what the history can and cannot support. Only the Morgue reports
+                // coverage, so the banner stays hidden everywhere else.
+                window.renderCoverageBanner = function(data) {
+                    var banner = document.getElementById('coverageBanner');
+                    clear(banner);
+
+                    if (window.currentTab !== 'morgue' || data.CoverageDays === null || data.CoverageDays === undefined) {
+                        banner.style.display = 'none';
+                        return;
+                    }
+
+                    var lines = [];
+
+                    if (data.CoverageDays === 0) {
+                        lines.push('No playback history is available yet, so nothing can be confirmed as unwatched. The Morgue stays empty until history accumulates.');
+                    } else {
+                        lines.push('History covers ' + data.CoverageDays + ' days — items added before that cannot be verified as unwatched.');
+
+                        if (data.EffectiveGraceDays !== data.ConfiguredGraceDays) {
+                            lines.push('Grace period reduced from ' + data.ConfiguredGraceDays + ' to ' + data.EffectiveGraceDays + ' days to match the history available.');
+                        }
+
+                        if (data.UnverifiableItemCount > 0) {
+                            lines.push(data.UnverifiableItemCount + ' of the rows below predate that history.');
+                        }
+                    }
+
+                    lines.forEach(function(text, index) {
+                        if (index > 0) banner.appendChild(document.createElement('br'));
+                        banner.appendChild(document.createTextNode(text));
+                    });
+                    banner.style.display = 'block';
                 };
 
                 window.renderMediaTable = function(items) {
@@ -651,6 +704,13 @@
 
                         tr.appendChild(td('padding: 15px 10px; color: #aaa;', item.Type));
                         tr.appendChild(td('padding: 15px 10px; font-family: monospace; color: #aaa;', item.FormattedSize));
+
+                        // Plays is shown in the Morgue too: with "barely-touched" enabled a
+                        // row can have plays, and without the column those are
+                        // indistinguishable from the zero-play ones.
+                        if (isMorgue) {
+                            tr.appendChild(td('padding: 15px 10px; color: ' + playCountColor + ';', item.PlayCount));
+                        }
 
                         // The extra stats for Living/Chapel
                         if (!isMorgue) {
@@ -703,13 +763,17 @@
 
                         var endpoint = '';
                         if (window.currentTab === 'living') endpoint = 'GraveyardAnalytics/Living?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
-                        else if (window.currentTab === 'morgue') endpoint = 'GraveyardAnalytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
+                        else if (window.currentTab === 'morgue') {
+                            var barely = document.getElementById('includeBarelyTouched').checked;
+                            endpoint = 'GraveyardAnalytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText + '&includeBarelyTouched=' + barely;
+                        }
                         else endpoint = 'GraveyardAnalytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
 
                         ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
                             var headerLabel = window.currentTab === 'living' ? "Total Size of Living Media" : "Total Dead Weight";
                             document.getElementById('totalWastedTitle').innerText = headerLabel;
                             document.getElementById('totalWasteValue').innerText = data.TotalWastedSize;
+                            window.renderCoverageBanner(data);
                             window.renderMediaTable(data.Items);
                         });
                     }
@@ -722,6 +786,7 @@
                     searchTimeout = setTimeout(window.fetchAndRenderTable, 500);
                 });
 
+                document.getElementById('includeBarelyTouched').addEventListener('change', window.fetchAndRenderTable);
                 document.getElementById('mediaTypeFilter').addEventListener('change', window.fetchAndRenderTable);
                 document.getElementById('limitFilter').addEventListener('change', window.fetchAndRenderTable);
                 document.getElementById('visitorEndDate').addEventListener('change', window.fetchAndRenderTable);

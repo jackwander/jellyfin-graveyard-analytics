@@ -8,8 +8,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Jellyfin.Controller" Version="10.11.*-*" />
-    <PackageReference Include="Jellyfin.Model" Version="10.11.*-*" />
+    <!--
+      Pinned, not floating. "10.11.*-*" resolved to 10.11.11, which removed
+      IUserManager.Users and broke the build from a clean checkout; local builds only
+      kept working because obj/project.assets.json still held 10.11.6. Phase 6 decides
+      whether to move to the newer API; until then the version is explicit so CI and a
+      fresh clone build the same thing this tree does.
+    -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
+    <PackageReference Include="Jellyfin.Model" Version="10.11.6" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.2.5" />
     <PackageReference Include="Dapper" Version="2.1.35" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />

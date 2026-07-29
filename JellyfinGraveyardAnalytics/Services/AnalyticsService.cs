@@ -17,65 +17,79 @@ namespace JellyfinGraveyardAnalytics.Services
         private readonly ILibraryManager _libraryManager;
         private readonly IUserDataManager _userDataManager;
         private readonly IUserManager _userManager;
+        private readonly JellyfinGraveyardAnalytics.Configuration.PluginConfiguration _config;
 
-        public AnalyticsService(Repository repository, ILibraryManager libraryManager, IUserDataManager userDataManager, IUserManager userManager)
+        public AnalyticsService(
+            Repository repository,
+            ILibraryManager libraryManager,
+            IUserDataManager userDataManager,
+            IUserManager userManager,
+            JellyfinGraveyardAnalytics.Configuration.PluginConfiguration config)
         {
             _repository = repository;
             _libraryManager = libraryManager;
             _userDataManager = userDataManager;
             _userManager = userManager;
+            _config = config;
         }
 
+        /// <summary>
+        /// Maximum plays for a row to count as "barely touched". Surfaced in the UI label,
+        /// so the two must move together.
+        /// </summary>
+        public const int BarelyTouchedPlayCeiling = 2;
+
+        /// <summary>
+        /// The Morgue: strictly zero-play items that have been in the library long enough
+        /// for that to mean neglect (D1). Optionally widened to barely-touched rows, which
+        /// are otherwise visible nowhere — the Sanctuary sorts by vitality descending.
+        /// </summary>
+        /// <param name="historyFloorUtc">
+        /// Oldest playback activity on record, used to clamp the grace period to the history
+        /// that actually exists. Null when there is no history at all.
+        /// </param>
         public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLeastWatchedItems(
           string mediaType,
           string? mediaSearch,
           int limit,
           Dictionary<string, int> playCounts,
           Dictionary<string, HashSet<string>> itemViewers,
-          Dictionary<string, DateTime> lastPlayedDates)
+          Dictionary<string, DateTime> lastPlayedDates,
+          bool includeBarelyTouched = false,
+          DateTime? historyFloorUtc = null)
         {
-            var kindList = new List<Jellyfin.Data.Enums.BaseItemKind>();
-            if (mediaType == "All")
-            {
-                kindList.Add(Jellyfin.Data.Enums.BaseItemKind.Movie);
-                kindList.Add(Jellyfin.Data.Enums.BaseItemKind.Series);
-            }
-            else
-            {
-                if (Enum.TryParse<Jellyfin.Data.Enums.BaseItemKind>(mediaType, true, out var kind))
-                    kindList.Add(kind);
-                else
-                    kindList.Add(Jellyfin.Data.Enums.BaseItemKind.Movie);
-            }
+            var now = DateTime.UtcNow;
+            var configuredGrace = _config.MorgueGraceDays;
 
-            var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
-            {
-                IncludeItemTypes = kindList.ToArray(),
-                IsVirtualItem = false,
-                Recursive = true,
-                ExcludeTags = new[] { "[Chapel]" }
-            };
+            // Coverage is what history can actually speak to. D1 clamps the grace period to
+            // it so the view never claims a 180-day judgement on a 20-day-old database.
+            int coverageDays = historyFloorUtc.HasValue
+                ? (int)Math.Max(0, Math.Floor((now - historyFloorUtc.Value).TotalDays))
+                : 0;
 
-            if (!string.IsNullOrWhiteSpace(mediaSearch))
-            {
-                query.SearchTerm = mediaSearch;
-            }
+            int effectiveGrace = Math.Min(configuredGrace, coverageDays);
+            var cutoff = now.AddDays(-effectiveGrace);
 
-            var allItems = _libraryManager.GetItemList(query).AsEnumerable();
-
-            if (!string.IsNullOrWhiteSpace(mediaSearch))
+            // No history at all means no item can be shown to be unwatched. Returning the
+            // whole library here would be the exact false-positive flood D1's clamp exists
+            // to prevent, so the view stays empty and the banner explains why.
+            if (!historyFloorUtc.HasValue)
             {
-                allItems = allItems.Where(i =>
-                    i.Name != null &&
-                    i.Name.Contains(mediaSearch, StringComparison.OrdinalIgnoreCase));
+                return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
+                {
+                    Items = new List<JellyfinGraveyardAnalytics.Models.LeastWatchedItem>(),
+                    TotalWastedSize = FormatBytes(0),
+                    CoverageDays = 0,
+                    EffectiveGraceDays = 0,
+                    ConfiguredGraceDays = configuredGrace,
+                    UnverifiableItemCount = 0
+                };
             }
 
-            var uniqueItems = allItems
-              .Where(i => i.Tags == null || !i.Tags.Contains("[Chapel]", StringComparer.OrdinalIgnoreCase))
-              .GroupBy(i => (i.Name ?? string.Empty).ToLower().Trim())
-              .Select(g => g.First());
+            var query = BuildMediaQuery(mediaType, mediaSearch, chapelOnly: false);
+            var candidates = ApplySearchAndDedupe(_libraryManager.GetItemList(query), mediaSearch);
 
-            var mappedItems = uniqueItems.Select(item =>
+            var mappedItems = candidates.Select(item =>
             {
                 string formattedId = item.Id.ToString("N");
                 long totalSize = 0;
@@ -152,31 +166,130 @@ namespace JellyfinGraveyardAnalytics.Services
             .Where(x => x != null)
             .ToList();
 
-            long wasteBytes = mappedItems.Where(x => x.PlayCount == 0).Sum(x => x.Size);
+            // D1: zero plays, aged past the (clamped) grace period. "Barely touched" widens
+            // the play test only -- the age test always applies.
+            int playCeiling = includeBarelyTouched ? BarelyTouchedPlayCeiling : 0;
+
+            var morgueItems = mappedItems
+                .Where(x => x.PlayCount <= playCeiling)
+                .Where(x => x.DateAdded.HasValue && x.DateAdded.Value <= cutoff)
+                .OrderByDescending(x => x.Size)
+                .ThenBy(x => x.PlayCount)
+                .Take(limit)
+                .ToList();
+
+            // Items older than the history floor cannot be confirmed unwatched: the history
+            // does not reach them. They are shown, but counted so the UI can say so.
+            int unverifiable = historyFloorUtc.HasValue
+                ? morgueItems.Count(x => x.DateAdded.HasValue && x.DateAdded.Value < historyFloorUtc.Value)
+                : morgueItems.Count;
 
             return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
             {
-                Items = mappedItems
-                    .OrderBy(x => x.UniqueViewers)
-                    .ThenBy(x => x.PlayCount)
-                    .ThenByDescending(x => x.Size)
-                    .Take(limit)
-                    .ToList(),
-                TotalWastedSize = FormatBytes(wasteBytes)
+                Items = morgueItems,
+
+                // Header and table now describe the same set (D1).
+                TotalWastedSize = FormatBytes(morgueItems.Sum(x => x.Size)),
+                CoverageDays = coverageDays,
+                EffectiveGraceDays = effectiveGrace,
+                ConfiguredGraceDays = configuredGrace,
+                UnverifiableItemCount = unverifiable
             };
         }
 
-        // Helper to make sizes human-readable
-        private string FormatBytes(long bytes)
+        /// <summary>
+        /// One query shape for all three media views, so they can no longer disagree about
+        /// what the library contains.
+        /// </summary>
+        private MediaBrowser.Controller.Entities.InternalItemsQuery BuildMediaQuery(
+            string mediaType, string? mediaSearch, bool chapelOnly)
         {
-            string[] Suffix = { "B", "KB", "MB", "GB", "TB" };
-            int i;
-            double dblSByte = bytes;
-            for (i = 0; i < Suffix.Length && bytes >= 1024; i++, bytes /= 1024)
+            var kinds = new List<Jellyfin.Data.Enums.BaseItemKind>();
+            if (string.Equals(mediaType, "All", StringComparison.OrdinalIgnoreCase))
             {
-                dblSByte = bytes / 1024.0;
+                kinds.Add(Jellyfin.Data.Enums.BaseItemKind.Movie);
+                kinds.Add(Jellyfin.Data.Enums.BaseItemKind.Series);
             }
-            return $"{dblSByte:0.##} {Suffix[i]}";
+            else if (Enum.TryParse<Jellyfin.Data.Enums.BaseItemKind>(mediaType, true, out var kind))
+            {
+                kinds.Add(kind);
+            }
+            else
+            {
+                kinds.Add(Jellyfin.Data.Enums.BaseItemKind.Movie);
+            }
+
+            var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
+            {
+                IncludeItemTypes = kinds.ToArray(),
+                IsVirtualItem = false,
+                Recursive = true
+            };
+
+            if (chapelOnly)
+            {
+                query.Tags = new[] { "[Chapel]" };
+            }
+            else
+            {
+                query.ExcludeTags = new[] { "[Chapel]" };
+            }
+
+            if (!string.IsNullOrWhiteSpace(mediaSearch))
+            {
+                query.SearchTerm = mediaSearch;
+            }
+
+            return query;
+        }
+
+        /// <summary>
+        /// One search-and-dedupe rule for all three media views. Keys on
+        /// (Name, ProductionYear, Kind) rather than lowercased name: the old rule collapsed
+        /// The Thing (1982) and The Thing (2011) into a single row and lost the other's size.
+        /// </summary>
+        private static List<BaseItem> ApplySearchAndDedupe(
+            IEnumerable<BaseItem> items, string? mediaSearch)
+        {
+            var filtered = items.Where(i =>
+                string.IsNullOrWhiteSpace(mediaSearch)
+                || (i.Name != null && i.Name.Contains(mediaSearch, StringComparison.OrdinalIgnoreCase)));
+
+            return filtered
+                .GroupBy(i => (
+                    Name: (i.Name ?? string.Empty).Trim().ToLowerInvariant(),
+                    Year: i.ProductionYear,
+                    Kind: i.GetBaseItemKind()))
+                .Select(g => g.First())
+                .ToList();
+        }
+
+        /// <summary>
+        /// The one size formatter. The previous version divided the running <c>long</c>
+        /// mid-loop (losing precision) and indexed its suffix array with an already-
+        /// incremented counter, throwing <see cref="IndexOutOfRangeException"/> at 1 PB and
+        /// above. Scaling happens in double and the index can never leave the array.
+        /// </summary>
+        public static string FormatBytes(long bytes)
+        {
+            string[] suffixes = { "B", "KB", "MB", "GB", "TB", "PB", "EB" };
+
+            if (bytes == 0)
+            {
+                return "0 B";
+            }
+
+            var negative = bytes < 0;
+            double value = negative ? -(double)bytes : bytes;
+
+            int order = 0;
+            while (value >= 1024 && order < suffixes.Length - 1)
+            {
+                value /= 1024;
+                order++;
+            }
+
+            return $"{(negative ? "-" : string.Empty)}{value:0.##} {suffixes[order]}";
         }
 
         public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetPurgatoryItems(
@@ -187,29 +300,12 @@ namespace JellyfinGraveyardAnalytics.Services
             Dictionary<string, HashSet<string>> itemViewers,
             Dictionary<string, DateTime> lastPlayedDates)
         {
-            var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
-            {
-                IncludeItemTypes = mediaType == "All"
-                    ? new[] { Jellyfin.Data.Enums.BaseItemKind.Movie, Jellyfin.Data.Enums.BaseItemKind.Series }
-                    : new[] { Enum.TryParse<Jellyfin.Data.Enums.BaseItemKind>(mediaType, true, out var kind) ? kind : Jellyfin.Data.Enums.BaseItemKind.Movie },
-                IsVirtualItem = false,
-                Recursive = true,
-                Tags = new[] { "[Chapel]" }
-            };
+            // Hoisted: this is a full-table SUM/GROUP BY. Inside the Select lambda below it
+            // re-ran once per Chapel item.
+            var playDurations = _repository.GetItemPlayDurations(_config.MinPlayDurationSeconds);
 
-            if (!string.IsNullOrWhiteSpace(mediaSearch))
-            {
-                query.SearchTerm = mediaSearch;
-            }
-
-            var purgatoryItems = _libraryManager.GetItemList(query).AsEnumerable();
-
-            if (!string.IsNullOrWhiteSpace(mediaSearch))
-            {
-                purgatoryItems = purgatoryItems.Where(i =>
-                    i.Name != null &&
-                    i.Name.Contains(mediaSearch, StringComparison.OrdinalIgnoreCase));
-            }
+            var query = BuildMediaQuery(mediaType, mediaSearch, chapelOnly: true);
+            var purgatoryItems = ApplySearchAndDedupe(_libraryManager.GetItemList(query), mediaSearch);
 
             var mappedItems = purgatoryItems.Select(item =>
             {
@@ -219,26 +315,20 @@ namespace JellyfinGraveyardAnalytics.Services
                 int uniqueUsers = 0;
                 DateTime? lastPlayed = null;
                 long totalDurationSeconds = 0;
-                var playDurations = _repository.GetItemPlayDurations();
 
                 if (item is MediaBrowser.Controller.Entities.TV.Series series)
                 {
-                    var episodeQuery = new MediaBrowser.Controller.Entities.InternalItemsQuery
-                    {
-                        IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Episode },
-                        AncestorIds = new[] { series.Id },
-                        IsVirtualItem = false,
-                        Recursive = true
-                    };
-                    var children = series.GetRecursiveChildren(null);
-                    var validEpisodes = children.Where(c => c.Path != null).ToList();
+                    // One source of episodes, not two. This previously ran both an
+                    // InternalItemsQuery and GetRecursiveChildren, then mixed the results:
+                    // size and plays came from one list while durations came from the other.
+                    var validEpisodes = series.GetRecursiveChildren(null)
+                        .Where(c => c.GetBaseItemKind() == Jellyfin.Data.Enums.BaseItemKind.Episode)
+                        .ToList();
 
-
-                    var episodes = _libraryManager.GetItemList(episodeQuery);
-                    itemSize = episodes.Sum(e => e.Size ?? 0);
+                    itemSize = validEpisodes.Sum(e => e.Size ?? 0);
 
                     totalPlays = (playCounts.TryGetValue(formattedId, out int sCount) ? sCount : 0) +
-                                 episodes.Sum(e => playCounts.TryGetValue(e.Id.ToString("N"), out int cCount) ? cCount : 0);
+                                 validEpisodes.Sum(e => playCounts.TryGetValue(e.Id.ToString("N"), out int cCount) ? cCount : 0);
 
                     var seriesUsers = new HashSet<string>();
                     if (itemViewers.TryGetValue(formattedId, out var sUsers)) seriesUsers.UnionWith(sUsers);
@@ -249,7 +339,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     totalDurationSeconds = (playDurations.TryGetValue(formattedId, out long sDur) ? sDur : 0) +
                                validEpisodes.Sum(e => playDurations.TryGetValue(e.Id.ToString("N"), out long cDur) ? cDur : 0);
 
-                    foreach (var e in episodes)
+                    foreach (var e in validEpisodes)
                     {
                         string episodeId = e.Id.ToString("N");
                         if (itemViewers.TryGetValue(episodeId, out var eUsers)) seriesUsers.UnionWith(eUsers);
@@ -305,35 +395,10 @@ namespace JellyfinGraveyardAnalytics.Services
             Dictionary<string, HashSet<string>> itemViewers,
             Dictionary<string, DateTime> lastPlayedDates)
         {
-            var playDurations = _repository.GetItemPlayDurations();
+            var playDurations = _repository.GetItemPlayDurations(_config.MinPlayDurationSeconds);
 
-            var kindList = new List<Jellyfin.Data.Enums.BaseItemKind>();
-            if (mediaType == "All")
-            {
-                kindList.Add(Jellyfin.Data.Enums.BaseItemKind.Movie);
-                kindList.Add(Jellyfin.Data.Enums.BaseItemKind.Series);
-            }
-            else
-            {
-                if (Enum.TryParse<Jellyfin.Data.Enums.BaseItemKind>(mediaType, true, out var kind))
-                    kindList.Add(kind);
-                else
-                    kindList.Add(Jellyfin.Data.Enums.BaseItemKind.Movie);
-            }
-
-            var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
-            {
-                IncludeItemTypes = kindList.ToArray(),
-                IsVirtualItem = false,
-                Recursive = true,
-                ExcludeTags = new[] { "[Chapel]" }
-            };
-
-            var allItems = _libraryManager.GetItemList(query);
-
-            var uniqueItems = allItems
-              .Where(i => string.IsNullOrWhiteSpace(mediaSearch) || (i.Name != null && i.Name.Contains(mediaSearch, StringComparison.OrdinalIgnoreCase)))
-              .ToList();
+            var query = BuildMediaQuery(mediaType, mediaSearch, chapelOnly: false);
+            var uniqueItems = ApplySearchAndDedupe(_libraryManager.GetItemList(query), mediaSearch);
 
             var mappedItems = uniqueItems.Select(item =>
             {
@@ -419,19 +484,28 @@ namespace JellyfinGraveyardAnalytics.Services
 
         public JellyfinGraveyardAnalytics.Models.VisitorResponse GetVisitorActivity(string endDateString, int weeksBack)
         {
-            if (!System.DateTime.TryParse(endDateString, out System.DateTime endDate))
+            // UTC end to end: the rows are stored as naive UTC, so a local-time window
+            // silently shifted every bound by the server's offset.
+            if (!System.DateTime.TryParse(
+                    endDateString,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out System.DateTime endDate))
             {
                 endDate = System.DateTime.UtcNow;
             }
-            endDate = endDate.Date.AddDays(1).AddTicks(-1);
-            System.DateTime startDate = endDate.AddDays(-7 * weeksBack).Date;
+
+            endDate = System.DateTime.SpecifyKind(endDate.Date.AddDays(1).AddTicks(-1), System.DateTimeKind.Utc);
+            System.DateTime startDate = System.DateTime.SpecifyKind(
+                endDate.AddDays(-7 * weeksBack).Date, System.DateTimeKind.Utc);
 
             var allUsers = _userManager.Users.ToList();
             var userDictionary = allUsers.ToDictionary(u => u.Id.ToString("N"), u => u.Username);
             var activeUserIds = new HashSet<string>();
             var userWatchTimes = new Dictionary<string, long>();
 
-            var rawData = _repository.GetRawPlaybackActivity(startDate, endDate);
+            var (rawData, truncated) = _repository.GetRawPlaybackActivity(
+                startDate, endDate, _config.GuestbookRowLimit);
 
             var sessions = new List<JellyfinGraveyardAnalytics.Models.VisitorSession>();
 
@@ -455,7 +529,8 @@ namespace JellyfinGraveyardAnalytics.Services
 
                 sessions.Add(new JellyfinGraveyardAnalytics.Models.VisitorSession
                 {
-                    Time = rowDate.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt"),
+                    Time = System.DateTime.SpecifyKind(rowDate, System.DateTimeKind.Utc)
+                        .ToLocalTime().ToString("MMM dd, yyyy - h:mm tt"),
                     Visitor = visitorName,
                     Subject = row.ItemName?.ToString() ?? "Unknown",
                     Type = row.ItemType?.ToString() ?? "Unknown",
@@ -488,7 +563,9 @@ namespace JellyfinGraveyardAnalytics.Services
             {
                 Sessions = sessions,
                 Ghosts = ghosts,
-                Leaderboard = leaderboard
+                Leaderboard = leaderboard,
+                Truncated = truncated,
+                RowLimit = _config.GuestbookRowLimit
             };
         }
     }
