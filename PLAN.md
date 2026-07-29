@@ -92,6 +92,13 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | 6 | **Metric thresholds mutually inconsistent.** See D2. Almost certainly what `71a01f7` was chasing. | `Repository.cs:87`, `:112`, `:143`, `:171` |
 | 7 | **Duplicate-listener accumulation.** Every `addEventListener` is registered *inside* the `viewshow` handler. Jellyfin fires `viewshow` on each return to the page → Nth visit fires N fetches per keystroke. | `dashboard.html:411`, `:635-643` |
 
+### P0 — added during Phase 2, from the live Tracearr server at `10.10.1.201:3000`
+
+| # | Finding | Location |
+| --- | --- | --- |
+| 24 | **`TestConnectionAsync` calls an endpoint that does not exist.** `GET /api/v1/public/system/status` → **404** on a live, healthy Tracearr. So the Settings tab's connection test can *never* succeed, and `PingTracearr` reports "Could not connect to Tracearr. Check your URL and API Key." even when the URL and key are perfect. Same class of bug as finding 1, missed by static reading because the endpoint name looks plausible. Confirmed real endpoints under `/api/v1/public/`: `history`, `users`, `stats`, `docs` (all 401 unauthenticated). Unauthenticated `GET /health` at the server root returns `{"status":"ok",...}`. | `TracearrService.cs:66` |
+| 25 | **`media/stale` does not exist either** — `GET /api/v1/public/media/stale` → 404. Both dead methods that Phase 2 deletes were built against an endpoint Tracearr does not serve, so they could never have worked. Strengthens item 8 from "dead code" to "dead *and* wrong". | `TracearrService.cs` (deleted methods) |
+
 ### P1 — correctness / semantics
 
 | # | Finding | Location |
@@ -280,6 +287,58 @@ which can leave a tagged in-memory item after a failed persist — that is
 
 **Done when:** with Tracearr enabled, all three media tabs populate, and the
 Guestbook shows leaderboard + Ghosts.
+
+Also fix **finding 24** here — it is the same bug as item 5 wearing a different
+endpoint name, and it is what makes the Settings page lie about the connection.
+
+#### Phase 2 progress
+
+A live Tracearr is available at `http://10.10.1.201:3000`, which turns most of
+this phase from inference into measurement.
+
+**Finding 1 confirmed against the real server:**
+
+```
+GET /api/v1/public/public/history  -> 404      <- what the plugin requests today
+GET /api/v1/public/history         -> 401      <- endpoint exists, wants a key
+    {"statusCode":401,"error":"Unauthorized","message":"Missing or invalid Authorization header"}
+```
+
+A 404 on the doubled path and a 401 on the corrected one is exactly the
+signature finding 1 predicted.
+
+- **Item 5 done.** The paging loop now requests the bare `history?...` path.
+- **Item 6 done.** `MaxHistoryPages = 40` cap; hitting it logs a warning naming
+  the pages available and the weeks requested, so truncation is never silent.
+  Page-count parsing moved into `ReadTotalPages`, which prefers an explicit
+  `totalPages`, tolerates a missing/zero/non-numeric `pageSize` instead of
+  dividing by it, and never returns less than 1. `CancellationToken` is threaded
+  through `SendTracearrRequestAsync`, `TestConnectionAsync`,
+  `GetVisitorHistoryAsync`, `GetTracearrPlaybackStatsAsync` (checked once per
+  page) and all five controller actions.
+- **Item 8 done.** `GetStaleMediaAsync` and `GetStaleMediaAlignedAsync` deleted
+  — both callerless, and both aimed at the nonexistent `media/stale`
+  (finding 25). Their removal orphaned `TracearrService.FormatBytes`, which is
+  gone too, so **half of finding 10 is already resolved**: only
+  `AnalyticsService.FormatBytes` remains, and Phase 3 item 11 now has one
+  implementation to fix rather than two to reconcile.
+- **Finding 24 fixed.** The connection test now probes
+  `history?weeksBack=1&page=1` — the endpoint the plugin actually depends on —
+  and reports *why* it failed instead of always blaming the API key:
+  `NotConfigured` / `Unreachable` / `Unauthorized` / `UnexpectedResponse`.
+  Request building moved into `BuildRequest` so the probe and the data path
+  cannot drift apart again. Verified live: the new endpoint returns **401** with
+  a bogus key (→ "reachable but rejected the API key"), while `system/status`
+  returns **404** with or without a key (→ `UnexpectedResponse`), which is why
+  the old test could never report success.
+- **Item 7 blocked on a key.** Normalizing `GetVisitorHistoryAsync` into
+  `VisitorResponse` means mapping real field names into `Sessions` /
+  `Leaderboard` / `Ghosts`, and the current code's field guesses
+  (`user.username`, `startedAt`, `durationMs`, `videoDecision`, `isTranscode`,
+  `progressMs`, `totalDurationMs`, `meta.total`, `meta.pageSize`) are exactly
+  what is in question. Ghosts also need a decision: the local path derives them
+  from Jellyfin's user list, but Tracearr has its own `users` endpoint and the
+  two username spaces may not match. Both want a look at real payloads first.
 
 ### Phase 3 — Make the numbers correct
 

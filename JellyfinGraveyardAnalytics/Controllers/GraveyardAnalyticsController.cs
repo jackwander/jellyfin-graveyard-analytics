@@ -67,12 +67,12 @@ namespace JellyfinGraveyardAnalytics.Controllers
             _providerManager = providerManager;
         }
 
-        private async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetPlaybackStatsAsync()
+        private async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetPlaybackStatsAsync(CancellationToken cancellationToken)
         {
             var config = Plugin.Instance.Configuration;
             if (config.EnableTracearr)
             {
-                var stats = await _tracearrService.GetTracearrPlaybackStatsAsync(52);
+                var stats = await _tracearrService.GetTracearrPlaybackStatsAsync(52, cancellationToken).ConfigureAwait(false);
                 return (stats.playCounts, stats.itemViewers, stats.lastPlayedDates);
             }
             else
@@ -90,11 +90,11 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("LeastWatched")]
-        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20)
+        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync();
+                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
@@ -111,11 +111,11 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Living")]
-        public async Task<IActionResult> GetLiving([FromQuery] string mediaType = "All", [FromQuery] string? mediaSearch = null, [FromQuery] int limit = 50)
+        public async Task<IActionResult> GetLiving([FromQuery] string mediaType = "All", [FromQuery] string? mediaSearch = null, [FromQuery] int limit = 50, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync();
+                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetLivingItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
@@ -132,11 +132,11 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Purgatory")]
-        public async Task<IActionResult> GetPurgatory([FromQuery] string mediaType = "All", [FromQuery] string? mediaSearch = null, [FromQuery] int limit = 50)
+        public async Task<IActionResult> GetPurgatory([FromQuery] string mediaType = "All", [FromQuery] string? mediaSearch = null, [FromQuery] int limit = 50, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync();
+                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetPurgatoryItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
@@ -358,7 +358,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("Visitors")]
-        public async Task<IActionResult> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
+        public async Task<IActionResult> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1, CancellationToken cancellationToken = default)
         {
             // Everything is inside the try, including the config read and the
             // Repository construction it triggers — both can throw on a bad data path.
@@ -370,7 +370,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 {
                     try
                     {
-                        var tracearrData = await _tracearrService.GetVisitorHistoryAsync(endDate, weeksBack);
+                        var tracearrData = await _tracearrService.GetVisitorHistoryAsync(endDate, weeksBack, cancellationToken).ConfigureAwait(false);
                         return Ok(tracearrData);
                     }
                     catch (Exception ex)

@@ -1,6 +1,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -36,15 +37,28 @@ namespace JellyfinGraveyardAnalytics.Api
         /// </summary>
         [HttpGet("Ping")]
         [Authorize(Policy = "RequiresElevation")] // Only admins can trigger this
-        public async Task<IActionResult> PingTracearr()
+        public async Task<IActionResult> PingTracearr(CancellationToken cancellationToken)
         {
-            var isSuccess = await _tracearrService.TestConnectionAsync();
-            if (isSuccess)
-            {
-                return Ok(new { status = "Success", message = "Tracearr connection established." });
-            }
+            var check = await _tracearrService.TestConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-            return BadRequest(new { status = "Error", message = "Could not connect to Tracearr. Check your URL and API Key." });
+            // Naming the actual failure beats the old blanket "check your URL and API Key",
+            // which was doubly misleading while the probe hit an endpoint that always 404s.
+            return check.Status switch
+            {
+                TracearrConnectionStatus.Success =>
+                    Ok(new { status = "Success", message = "Tracearr connection established." }),
+
+                TracearrConnectionStatus.NotConfigured =>
+                    BadRequest(new { status = "Error", message = "Enable the Tracearr engine and set both the URL and API key, then save before testing." }),
+
+                TracearrConnectionStatus.Unauthorized =>
+                    BadRequest(new { status = "Error", message = "Tracearr is reachable but rejected the API key." }),
+
+                TracearrConnectionStatus.Unreachable =>
+                    BadRequest(new { status = "Error", message = "Could not reach Tracearr at that URL. Check the address, port, and that the server is running." }),
+
+                _ => BadRequest(new { status = "Error", message = $"Tracearr answered unexpectedly (HTTP {check.StatusCode}). Check that the URL points at a Tracearr instance." })
+            };
         }
 
         /// <summary>
