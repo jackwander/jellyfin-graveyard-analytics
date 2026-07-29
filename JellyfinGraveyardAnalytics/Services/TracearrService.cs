@@ -160,7 +160,6 @@ namespace JellyfinGraveyardAnalytics.Services
                                 MediaId = jellyfinItem.Id.ToString(),
                                 Name = jellyfinItem.Name ?? "Unknown",
                                 Type = jellyfinItem is MediaBrowser.Controller.Entities.Movies.Movie ? "Movie" : "Series",
-                                Path = jellyfinItem.Path ?? string.Empty,
                                 PlayCount = playCount,
                                 UniqueViewers = viewers,
                                 Size = totalSize,

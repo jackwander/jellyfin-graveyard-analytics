@@ -28,6 +28,19 @@ namespace JellyfinGraveyardAnalytics.Controllers
     [Authorize(Policy = "RequiresElevation")]
     public class GraveyardAnalyticsController : ControllerBase
     {
+        /// <summary>
+        /// What the client is told when something fails unexpectedly. Exception text can carry
+        /// filesystem paths and connection strings, so it goes to the log and nowhere else.
+        /// </summary>
+        private const string GenericFailure = "The request failed. Check the Jellyfin server log for details.";
+
+        /// <summary>
+        /// The one diagnostic worth telling the admin, because it is actionable and
+        /// names no path. Returned as a literal so no exception text is ever echoed.
+        /// </summary>
+        private const string PlaybackUnavailableMessage =
+            "The Playback Reporting plugin database was not found. Install Playback Reporting first.";
+
         private readonly ILibraryManager _libraryManager;
         private readonly ILogger<GraveyardAnalyticsController> _logger;
         private readonly ICollectionManager _collectionManager;
@@ -66,7 +79,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
             {
                 if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
                 {
-                    throw new Exception("CRITICAL ERROR: The Playback Reporting plugin database was not found.");
+                    throw new PlaybackDataUnavailableException(PlaybackUnavailableMessage);
                 }
 
                 var playCounts = Plugin.Instance.Repository.GetItemPlayCounts();
@@ -85,9 +98,15 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetLeastWatchedItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
+            catch (PlaybackDataUnavailableException ex)
+            {
+                _logger.LogWarning(ex, "Could not assemble The Morgue: playback data is unavailable.");
+                return BadRequest(new { message = PlaybackUnavailableMessage });
+            }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Failed to assemble The Morgue.");
+                return StatusCode(500, new { message = GenericFailure });
             }
         }
 
@@ -100,9 +119,15 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetLivingItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
+            catch (PlaybackDataUnavailableException ex)
+            {
+                _logger.LogWarning(ex, "Could not assemble The Sanctuary: playback data is unavailable.");
+                return BadRequest(new { message = PlaybackUnavailableMessage });
+            }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Failed to assemble The Sanctuary.");
+                return StatusCode(500, new { message = GenericFailure });
             }
         }
 
@@ -115,9 +140,15 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetPurgatoryItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
             }
+            catch (PlaybackDataUnavailableException ex)
+            {
+                _logger.LogWarning(ex, "Could not assemble The Chapel: playback data is unavailable.");
+                return BadRequest(new { message = PlaybackUnavailableMessage });
+            }
             catch (Exception ex)
             {
-                return BadRequest(ex.Message);
+                _logger.LogError(ex, "Failed to assemble The Chapel.");
+                return StatusCode(500, new { message = GenericFailure });
             }
         }
 
@@ -126,10 +157,21 @@ namespace JellyfinGraveyardAnalytics.Controllers
         {
             try
             {
-                var item = _libraryManager.GetItemById(itemId);
-                if (item == null) return NotFound("Subject not found in the records.");
+                if (!Guid.TryParse(itemId, out Guid parsedId)) return BadRequest(new { message = "Invalid ID format." });
 
-                _logger.LogWarning("Performing Last Rites for: {0} ({1})", item.Name, item.Path);
+                var item = _libraryManager.GetItemById(parsedId);
+                if (item == null) return NotFound(new { message = "Subject not found in the records." });
+
+                // This deletes files from disk, so it is restricted to subjects that have
+                // already been condemned. Anything else has to be Condemned first.
+                if (item.Tags == null || !item.Tags.Contains("[Chapel]", StringComparer.OrdinalIgnoreCase))
+                {
+                    _logger.LogWarning(
+                        "Refused Last Rites for {ItemName}: the subject does not carry the [Chapel] tag.", item.Name);
+                    return BadRequest(new { message = "Only subjects condemned to The Chapel can receive Last Rites." });
+                }
+
+                _logger.LogWarning("Performing Last Rites for: {ItemName} ({ItemPath})", item.Name, item.Path);
 
                 var options = new MediaBrowser.Controller.Library.DeleteOptions
                 {
@@ -142,8 +184,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to perform Last Rites on {0}", itemId);
-                return StatusCode(500, "The rite failed: " + ex.Message);
+                _logger.LogError(ex, "Failed to perform Last Rites on {ItemId}", itemId);
+                return StatusCode(500, new { message = "The rite failed. Check the Jellyfin server log for details." });
             }
         }
 
@@ -152,10 +194,10 @@ namespace JellyfinGraveyardAnalytics.Controllers
         {
             try
             {
-                if (!Guid.TryParse(itemId, out Guid parsedId)) return BadRequest("Invalid ID format.");
+                if (!Guid.TryParse(itemId, out Guid parsedId)) return BadRequest(new { message = "Invalid ID format." });
 
                 var item = _libraryManager.GetItemById(parsedId);
-                if (item == null) return NotFound("Subject not found.");
+                if (item == null) return NotFound(new { message = "Subject not found." });
 
                 var tags = item.Tags?.ToList() ?? new List<string>();
 
@@ -269,7 +311,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, ex.Message);
+                _logger.LogError(ex, "Failed to condemn {ItemId}.", itemId);
+                return StatusCode(500, new { message = GenericFailure });
             }
         }
 
@@ -278,10 +321,10 @@ namespace JellyfinGraveyardAnalytics.Controllers
         {
             try
             {
-                if (!Guid.TryParse(itemId, out Guid parsedId)) return BadRequest("Invalid ID format.");
+                if (!Guid.TryParse(itemId, out Guid parsedId)) return BadRequest(new { message = "Invalid ID format." });
 
                 var item = _libraryManager.GetItemById(parsedId);
-                if (item == null) return NotFound("Subject not found.");
+                if (item == null) return NotFound(new { message = "Subject not found." });
 
                 var tags = item.Tags?.ToList() ?? new List<string>();
 
@@ -309,41 +352,46 @@ namespace JellyfinGraveyardAnalytics.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, ex.Message);
+                _logger.LogError(ex, "Failed to pardon {ItemId}.", itemId);
+                return StatusCode(500, new { message = GenericFailure });
             }
         }
 
         [HttpGet("Visitors")]
         public async Task<IActionResult> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1)
         {
-            var config = Plugin.Instance.Configuration;
-
-            if (config.EnableTracearr)
-            {
-                try
-                {
-                    var tracearrData = await _tracearrService.GetVisitorHistoryAsync(endDate, weeksBack);
-                    return Ok(tracearrData);
-                }
-                catch (Exception ex)
-                {
-                    return BadRequest($"Tracearr Engine Error: {ex.Message}");
-                }
-            }
-
-            if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
-            {
-                return BadRequest("CRITICAL ERROR: The Playback Reporting plugin database was not found. Please install Playback Reporting first.");
-            }
+            // Everything is inside the try, including the config read and the
+            // Repository construction it triggers — both can throw on a bad data path.
             try
             {
+                var config = Plugin.Instance.Configuration;
+
+                if (config.EnableTracearr)
+                {
+                    try
+                    {
+                        var tracearrData = await _tracearrService.GetVisitorHistoryAsync(endDate, weeksBack);
+                        return Ok(tracearrData);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to read visitor history from the Tracearr engine.");
+                        return BadRequest(new { message = "The Tracearr engine could not be reached. Check the URL and API key in Settings." });
+                    }
+                }
+
+                if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
+                {
+                    return BadRequest(new { message = PlaybackUnavailableMessage });
+                }
+
                 var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager);
                 return Ok(service.GetVisitorActivity(endDate, weeksBack));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get visitor activity.");
-                return StatusCode(500, ex.Message);
+                return StatusCode(500, new { message = GenericFailure });
             }
         }
 
@@ -352,6 +400,19 @@ namespace JellyfinGraveyardAnalytics.Controllers
         public IActionResult Ping()
         {
             return Ok(new { message = "The Graveyard Controller is ALIVE!" });
+        }
+    }
+
+    /// <summary>
+    /// Raised when the playback data source is missing or unusable, so the caller can be
+    /// told something actionable instead of the generic failure. Its message is logged, not
+    /// echoed — the client always receives a literal from the controller.
+    /// </summary>
+    public sealed class PlaybackDataUnavailableException : Exception
+    {
+        public PlaybackDataUnavailableException(string message)
+            : base(message)
+        {
         }
     }
 }

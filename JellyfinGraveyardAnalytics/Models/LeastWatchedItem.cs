@@ -5,7 +5,9 @@ namespace JellyfinGraveyardAnalytics.Models
         public string MediaId { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
-        public string Path { get; set; } = string.Empty;
+
+        // No Path here on purpose: this DTO is serialized straight to the admin UI,
+        // which never displays a path, and shipping one leaks the media library layout.
         public int PlayCount { get; set; }
         public long Size { get; set; } // Raw bytes
         public string FormattedSize { get; set; } = "0 MB";

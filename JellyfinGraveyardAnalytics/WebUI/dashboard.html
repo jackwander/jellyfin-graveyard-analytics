@@ -253,6 +253,57 @@
                 }
             });
 
+            // DOM HELPERS
+            // Rows are built as nodes and filled with textContent. Media titles,
+            // usernames and device names all originate outside the server, so no
+            // row content is ever parsed as HTML.
+            function clear(node) {
+                while (node.firstChild) node.removeChild(node.firstChild);
+            }
+
+            function td(style, text) {
+                var cell = document.createElement('td');
+                if (style) cell.style.cssText = style;
+                if (text !== undefined && text !== null) cell.textContent = text;
+                return cell;
+            }
+
+            function span(style, text) {
+                var el = document.createElement('span');
+                if (style) el.style.cssText = style;
+                el.textContent = text;
+                return el;
+            }
+
+            function subLine(text) {
+                var el = document.createElement('small');
+                el.style.color = '#555';
+                el.textContent = text;
+                return el;
+            }
+
+            function emptyRow(tbody, colspan, message) {
+                var tr = document.createElement('tr');
+                var cell = td('text-align:center; padding:20px; color:#888;', message);
+                cell.colSpan = colspan;
+                tr.appendChild(cell);
+                tbody.appendChild(tr);
+            }
+
+            function actionButton(label, style, item, handler) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'exorcise-btn';
+                if (style) btn.style.cssText = style;
+                btn.textContent = label;
+                btn.dataset.id = item.MediaId;
+                btn.dataset.name = item.Name || '';
+                btn.addEventListener('click', function() {
+                    handler(btn.dataset.id, btn.dataset.name, btn);
+                });
+                return btn;
+            }
+
             // LOAD PLUGIN CONFIGURATION
             window.loadPluginConfig = function() {
                 ApiClient.getPluginConfiguration(pluginId).then(function (config) {
@@ -431,10 +482,10 @@
 
                     function renderTracearrRows(items) {
                         var tbody = document.getElementById('tracearrTableBody');
-                        tbody.innerHTML = '';
+                        clear(tbody);
 
                         if (items.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px; color:#888;">No Tracearr records found for this period.</td></tr>';
+                            emptyRow(tbody, 7, 'No Tracearr records found for this period.');
                             return;
                         }
 
@@ -444,7 +495,6 @@
 
                             var username = session.user && session.user.username ? session.user.username : 'Unknown Entity';
                             var title = session.showTitle ? (session.showTitle + ' - ' + session.mediaTitle) : (session.mediaTitle || 'Unknown Relic');
-                            var device = session.device + '<br><small style="color:#555;">' + (session.player || 'Unknown Player') + '</small>';
                             var watchDate = session.startedAt ? new Date(session.startedAt).toLocaleString() : 'Unknown Date';
 
                             var totalSec = Math.floor((session.durationMs || 0) / 1000);
@@ -453,39 +503,47 @@
                             var s = totalSec % 60;
                             var formattedDuration = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
 
-                            var isTranscode = session.isTranscode;
-                            var methodHtml = '<span style="color:' + (isTranscode ? '#cf6679' : '#888') + '; font-weight:' + (isTranscode ? 'bold' : 'normal') + ';">' + (session.videoDecision ? session.videoDecision.toUpperCase() : 'UNKNOWN') + '</span>';
+                            tr.appendChild(td('padding:12px 10px; color:#e0e0e0; font-weight:bold;', username));
+                            tr.appendChild(td('padding:12px 10px; color:#fff;', title));
 
-                            var fateHtml = '';
+                            var deviceCell = td('padding:12px 10px; color:#aaa;', session.device || 'Unknown Vessel');
+                            deviceCell.appendChild(document.createElement('br'));
+                            deviceCell.appendChild(subLine(session.player || 'Unknown Player'));
+                            tr.appendChild(deviceCell);
+
+                            tr.appendChild(td('padding:12px 10px; color:#aaa; font-size:0.9em;', watchDate));
+                            tr.appendChild(td('padding:12px 10px; font-family:monospace; color:#aaa;', formattedDuration));
+
+                            var isTranscode = session.isTranscode;
+                            var methodCell = td('padding:12px 10px;');
+                            methodCell.appendChild(span(
+                                'color:' + (isTranscode ? '#cf6679' : '#888') + '; font-weight:' + (isTranscode ? 'bold' : 'normal') + ';',
+                                session.videoDecision ? String(session.videoDecision).toUpperCase() : 'UNKNOWN'));
+                            tr.appendChild(methodCell);
+
+                            var fateCell = td('padding:12px 10px;');
                             if (session.watched) {
-                                fateHtml = '<span style="color: #4CAF50; font-weight: bold;">Laid to Rest</span>';
+                                fateCell.appendChild(span('color: #4CAF50; font-weight: bold;', 'Laid to Rest'));
                             } else if (session.totalDurationMs && session.progressMs) {
                                 var progress = parseInt(session.progressMs, 10);
                                 var total = parseInt(session.totalDurationMs, 10);
                                 var percentage = (progress / total) * 100;
 
                                 if (percentage >= 85) {
-                                    fateHtml = '<span style="color: #8bc34a; font-weight: bold;">Near Death</span>';
+                                    fateCell.appendChild(span('color: #8bc34a; font-weight: bold;', 'Near Death'));
                                 } else if (percentage >= 50 && percentage < 85) {
-                                    fateHtml = '<span style="color: #ffeb3b;">Lingering</span>';
+                                    fateCell.appendChild(span('color: #ffeb3b;', 'Lingering'));
                                 } else if (percentage >= 20 && percentage < 50) {
-                                    fateHtml = '<span style="color: #9E9E9E; font-style: italic;">Ghosted</span>';
+                                    fateCell.appendChild(span('color: #9E9E9E; font-style: italic;', 'Ghosted'));
                                 } else {
-                                    fateHtml = '<span style="color: #FF9800; font-weight: bold;">Left for Dead</span>';
+                                    fateCell.appendChild(span('color: #FF9800; font-weight: bold;', 'Left for Dead'));
                                 }
-                                fateHtml += '<br><span style="font-size:0.75em; color:#555;">' + Math.round(percentage) + '% Complete</span>';
+                                fateCell.appendChild(document.createElement('br'));
+                                fateCell.appendChild(span('font-size:0.75em; color:#555;', Math.round(percentage) + '% Complete'));
                             } else {
-                                fateHtml = '<span style="color: #555;">Unknown Fate</span>';
+                                fateCell.appendChild(span('color: #555;', 'Unknown Fate'));
                             }
-
-                            tr.innerHTML =
-                                '<td style="padding:12px 10px; color:#e0e0e0; font-weight:bold;">' + username + '</td>' +
-                                '<td style="padding:12px 10px; color:#fff;">' + title + '</td>' +
-                                '<td style="padding:12px 10px; color:#aaa;">' + device + '</td>' +
-                                '<td style="padding:12px 10px; color:#aaa; font-size:0.9em;">' + watchDate + '</td>' +
-                                '<td style="padding:12px 10px; font-family:monospace; color:#aaa;">' + formattedDuration + '</td>' +
-                                '<td style="padding:12px 10px;">' + methodHtml + '</td>' +
-                                '<td style="padding:12px 10px;">' + fateHtml + '</td>';
+                            tr.appendChild(fateCell);
 
                             tbody.appendChild(tr);
                         });
@@ -493,20 +551,32 @@
 
                     function renderFallbackRows(data) {
                         var tbody = document.getElementById('fallbackTableBody');
-                        tbody.innerHTML = '';
+                        clear(tbody);
 
-                        var leaderboardHtml = '';
-                        if (data.Leaderboard) {
-                            data.Leaderboard.forEach(function(l) {
-                                leaderboardHtml += '<li style="margin-bottom: 5px;"><strong>' + l.Name + '</strong> - ' + l.TotalTime + '</li>';
+                        var leaderboardList = document.getElementById('leaderboardList');
+                        clear(leaderboardList);
+                        var leaders = data.Leaderboard || [];
+                        if (leaders.length === 0) {
+                            var noneItem = document.createElement('li');
+                            noneItem.textContent = 'No active visitors in this timeframe.';
+                            leaderboardList.appendChild(noneItem);
+                        } else {
+                            leaders.forEach(function(l) {
+                                var li = document.createElement('li');
+                                li.style.marginBottom = '5px';
+                                var name = document.createElement('strong');
+                                name.textContent = l.Name;
+                                li.appendChild(name);
+                                li.appendChild(document.createTextNode(' - ' + l.TotalTime));
+                                leaderboardList.appendChild(li);
                             });
                         }
-                        document.getElementById('leaderboardList').innerHTML = leaderboardHtml || '<li>No active visitors in this timeframe.</li>';
-                        document.getElementById('ghostsList').innerText = (data.Ghosts && data.Ghosts.length > 0) ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
+
+                        document.getElementById('ghostsList').textContent = (data.Ghosts && data.Ghosts.length > 0) ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
 
                         var sessions = data.Sessions || [];
                         if (sessions.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#888;">No local logs found.</td></tr>';
+                            emptyRow(tbody, 6, 'No local logs found.');
                             return;
                         }
 
@@ -516,13 +586,17 @@
                             var methodColor = s.IsTranscode ? '#cf6679' : '#888';
                             var methodWeight = s.IsTranscode ? 'bold' : 'normal';
 
-                            tr.innerHTML =
-                                '<td style="padding:12px 10px; color:#aaa; font-size:0.9em;">' + (s.Time || 'Unknown') + '</td>' +
-                                '<td style="padding:12px 10px; color:#e0e0e0; font-weight:bold;">' + (s.Visitor || 'Unknown') + '</td>' +
-                                '<td style="padding:12px 10px; color:#fff;">' + (s.Subject || 'Unknown') + '<br><small style="color:#555;">' + (s.Type || '') + '</small></td>' +
-                                '<td style="padding:12px 10px; color:#aaa;">' + (s.Device || 'Unknown') + '</td>' +
-                                '<td style="padding:12px 10px; color:' + methodColor + '; font-weight:' + methodWeight + ';">' + (s.Method || 'Unknown') + '</td>' +
-                                '<td style="padding:12px 10px; font-family:monospace; color:#aaa;">' + (s.Duration || '00:00:00') + '</td>';
+                            tr.appendChild(td('padding:12px 10px; color:#aaa; font-size:0.9em;', s.Time || 'Unknown'));
+                            tr.appendChild(td('padding:12px 10px; color:#e0e0e0; font-weight:bold;', s.Visitor || 'Unknown'));
+
+                            var subjectCell = td('padding:12px 10px; color:#fff;', s.Subject || 'Unknown');
+                            subjectCell.appendChild(document.createElement('br'));
+                            subjectCell.appendChild(subLine(s.Type || ''));
+                            tr.appendChild(subjectCell);
+
+                            tr.appendChild(td('padding:12px 10px; color:#aaa;', s.Device || 'Unknown'));
+                            tr.appendChild(td('padding:12px 10px; color:' + methodColor + '; font-weight:' + methodWeight + ';', s.Method || 'Unknown'));
+                            tr.appendChild(td('padding:12px 10px; font-family:monospace; color:#aaa;', s.Duration || '00:00:00'));
 
                             tbody.appendChild(tr);
                         });
@@ -533,7 +607,7 @@
                     var isMorgue = window.currentTab === 'morgue';
                     var tbody = isMorgue ? document.getElementById('morgueTableBody') : document.getElementById('leastWatchedTableBody');
 
-                    tbody.innerHTML = '';
+                    clear(tbody);
 
                     items.forEach(function(item) {
                         var tr = document.createElement('tr');
@@ -542,7 +616,7 @@
                         var playCountColor = item.PlayCount === 0 ? '#cf6679' : '#888';
                         var nameWeight = item.PlayCount === 0 ? 'bold' : 'normal';
                         var baseUrl = window.parent.location.origin + window.parent.location.pathname;
-                        var itemUrl = baseUrl + '#/details?id=' + item.MediaId;
+                        var itemUrl = baseUrl + '#/details?id=' + encodeURIComponent(item.MediaId);
 
                         // Date Added Math
                         var dateAddedText = "Unknown";
@@ -564,36 +638,47 @@
                             timeOfDeathColor = isDead ? '#cf6679' : '#aaa';
                         }
 
-                        // Actions logic
-                        var actionButtons = (window.currentTab === 'living' || window.currentTab === 'morgue') ?
-                            '<button onclick="window.condemnSubject(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn" style="border-color: #ff9800; color: #ff9800;">Condemn</button>' :
-                            '<button onclick="window.pardonSubject(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn" style="border-color: #4CAF50; color: #4CAF50; margin-right: 5px;">Pardon</button>' +
-                            '<button onclick="window.performLastRites(\'' + item.MediaId + '\', \'' + item.Name.replace(/'/g, "\\'") + '\', this)" class="exorcise-btn">Exorcise</button>';
+                        // Title cell — the link text is a filename, so it stays textContent
+                        var nameCell = td('padding: 15px 10px;');
+                        var link = document.createElement('a');
+                        link.href = itemUrl;
+                        link.target = '_top';
+                        link.style.cssText = 'color: #e0e0e0; text-decoration: none; border-bottom: 1px dashed #444;';
+                        link.style.fontWeight = nameWeight;
+                        link.textContent = item.Name;
+                        nameCell.appendChild(link);
+                        tr.appendChild(nameCell);
 
-                        // Build the Row String
-                        var rowHtml =
-                            '<td style="padding: 15px 10px;"><a href="' + itemUrl + '" target="_top" style="color: #e0e0e0; font-weight: ' + nameWeight + '; text-decoration: none; border-bottom: 1px dashed #444;">' + item.Name + '</a></td>' +
-                            '<td style="padding: 15px 10px; color: #aaa;">' + item.Type + '</td>' +
-                            '<td style="padding: 15px 10px; font-family: monospace; color: #aaa;">' + item.FormattedSize + '</td>';
+                        tr.appendChild(td('padding: 15px 10px; color: #aaa;', item.Type));
+                        tr.appendChild(td('padding: 15px 10px; font-family: monospace; color: #aaa;', item.FormattedSize));
 
-                        // Inject the extra stats for Living/Chapel
+                        // The extra stats for Living/Chapel
                         if (!isMorgue) {
-                            rowHtml +=
-                                '<td style="padding: 15px 10px; color: ' + playCountColor + ';">' + item.PlayCount + '</td>' +
-                                '<td style="padding: 15px 10px; color: #888; font-family: monospace;">' + (item.FormattedDuration || '00:00:00') + '</td>' +
-                                '<td style="padding: 15px 10px; color: ' + (item.UniqueViewers === 1 ? '#ff9800' : '#aaa') + ';">' + item.UniqueViewers + ' <span style="font-size:0.8em; color:#555;">Souls</span></td>';
+                            tr.appendChild(td('padding: 15px 10px; color: ' + playCountColor + ';', item.PlayCount));
+                            tr.appendChild(td('padding: 15px 10px; color: #888; font-family: monospace;', item.FormattedDuration || '00:00:00'));
+
+                            var reachCell = td('padding: 15px 10px; color: ' + (item.UniqueViewers === 1 ? '#ff9800' : '#aaa') + ';', item.UniqueViewers + ' ');
+                            reachCell.appendChild(span('font-size:0.8em; color:#555;', 'Souls'));
+                            tr.appendChild(reachCell);
                         }
 
-                        // Add the standard trailing columns
-                        rowHtml += '<td style="padding: 15px 10px; color: #aaa;">' + dateAddedText + '</td>';
+                        // The standard trailing columns
+                        tr.appendChild(td('padding: 15px 10px; color: #aaa;', dateAddedText));
 
                         if (!isMorgue) {
-                             rowHtml += '<td style="padding: 15px 10px; color: ' + timeOfDeathColor + '; font-style: ' + (isDead ? 'italic' : 'normal') + ';">' + lastPlayedText + '</td>';
+                            tr.appendChild(td('padding: 15px 10px; color: ' + timeOfDeathColor + '; font-style: ' + (isDead ? 'italic' : 'normal') + ';', lastPlayedText));
                         }
 
-                        rowHtml += '<td style="padding: 10px; text-align: center; white-space: nowrap;">' + actionButtons + '</td>';
+                        // Actions — handlers bind via addEventListener, ids via dataset
+                        var actionsCell = td('padding: 10px; text-align: center; white-space: nowrap;');
+                        if (window.currentTab === 'living' || window.currentTab === 'morgue') {
+                            actionsCell.appendChild(actionButton('Condemn', 'border-color: #ff9800; color: #ff9800;', item, window.condemnSubject));
+                        } else {
+                            actionsCell.appendChild(actionButton('Pardon', 'border-color: #4CAF50; color: #4CAF50; margin-right: 5px;', item, window.pardonSubject));
+                            actionsCell.appendChild(actionButton('Exorcise', '', item, window.performLastRites));
+                        }
+                        tr.appendChild(actionsCell);
 
-                        tr.innerHTML = rowHtml;
                         tbody.appendChild(tr);
                     });
                 };

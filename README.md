@@ -64,6 +64,27 @@ A complete, unfiltered séance into your server's traffic. Monitor every single 
 
 ---
 
+## 📡 Tracearr Webhook (not yet implemented)
+
+The condemn webhook is reachable but **not wired up**: it authenticates the
+caller and then answers `501 Not Implemented`. It is documented here only so the
+authentication contract is discoverable.
+
+```
+POST /GraveyardAnalytics/Tracearr/Webhook/Condemn
+X-Tracearr-Token: <your Tracearr API key>
+Content-Type: application/json
+
+{ "MediaId": "<jellyfin item id>", "EventType": "<event>" }
+```
+
+* The key travels in the **`X-Tracearr-Token` header**, never in the query
+  string — a query string ends up in access logs.
+* The endpoint returns `401` unless the Tracearr engine is enabled **and** an API
+  key is set in Settings. It fails closed on a fresh install.
+
+---
+
 ## 📦 Installation
 
 To install Graveyard Analytics, add this repository to your Jellyfin server:
