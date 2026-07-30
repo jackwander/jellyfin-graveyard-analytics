@@ -20,7 +20,10 @@
                 <div id="mediaTopCard" style="background: linear-gradient(135deg, #2c3e50 0%, #000000 100%); border-left: 5px solid #666; color: white; padding: 20px; border-radius: 4px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
                     <div>
                         <span id="totalWastedTitle" style="display: block; font-size: 0.9em; text-transform: uppercase; color: #aaa; letter-spacing: 2px;">Total Dead Weight</span>
-                        <span id="totalWasteValue" style="font-size: 2.5em; font-weight: bold; font-family: monospace;">0 GB</span>
+                        <span id="totalWasteValue" style="font-size: 2.5em; font-weight: bold; font-family: monospace;">0 B</span>
+                        <!-- Only shown when the reclaimable figure differs from the total above,
+                             which the response now reports separately (TotalWasted vs TotalSize). -->
+                        <span id="totalWastedSubline" style="display: none; font-size: 0.85em; color: #ff9800;"></span>
                     </div>
                     <div style="text-align: right;">
                         <span style="display: block; font-size: 0.8em; color: #888;">Stagnant since installation</span>
@@ -376,6 +379,11 @@
                 document.getElementById('barelyTouchedFilter').style.display = 'none';
                 document.getElementById('unverifiableFilter').style.display = 'none';
                 document.getElementById('coverageBanner').style.display = 'none';
+
+                // Cleared on the way out, not just rewritten on the way in: it makes a claim
+                // about a specific tab's rows, and a fetch that fails leaves the card up.
+                document.getElementById('totalWastedSubline').style.display = 'none';
+                document.getElementById('totalWastedSubline').innerText = '';
                 mediaTableContainer.style.display = 'none';
                 morgueTableContainer.style.display = 'none';
                 visitorTableContainer.style.display = 'none';
@@ -615,6 +623,42 @@
                     banner.style.display = 'block';
                 };
 
+                // The top card. The response carries two figures rather than one overloaded
+                // field: TotalSize is the size of what this tab lists, TotalWasted only the
+                // never-played part of it — and null on the Sanctuary, where every row has
+                // plays. The label used to be swapped per tab to cover for a field called
+                // "total wasted" reporting living media.
+                var TOTAL_LABELS = {
+                    living: 'Total Size of Living Media',
+                    chapel: 'Total Size in The Chapel',
+                    morgue: 'Total Dead Weight'
+                };
+
+                window.renderTotals = function(data) {
+                    var subline = document.getElementById('totalWastedSubline');
+                    var label = TOTAL_LABELS[window.currentTab] || 'Total Size';
+
+                    // The Morgue's total covers the rows listed, the other two cover the whole
+                    // tab. Same card, same position, two meanings — so it has to say which.
+                    if (data.TotalCoversAllMatches === false) {
+                        label += ' (listed rows)';
+                    }
+
+                    document.getElementById('totalWastedTitle').innerText = label;
+                    document.getElementById('totalWasteValue').innerText = data.TotalSize || '0 B';
+
+                    // Equal figures would just say the same thing twice: the Morgue's default
+                    // state is zero-play by construction. A null TotalWasted means the view has
+                    // nothing it can claim, which is not the same as claiming zero.
+                    if (data.TotalWasted && data.TotalWasted !== data.TotalSize) {
+                        subline.innerText = 'Never played: ' + data.TotalWasted;
+                        subline.style.display = 'block';
+                    } else {
+                        subline.innerText = '';
+                        subline.style.display = 'none';
+                    }
+                };
+
                 window.renderMediaTable = function(items, context) {
                     var isMorgue = window.currentTab === 'morgue';
                     var tbody = isMorgue ? document.getElementById('morgueTableBody') : document.getElementById('leastWatchedTableBody');
@@ -739,9 +783,7 @@
                         else endpoint = 'GraveyardAnalytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
 
                         ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
-                            var headerLabel = window.currentTab === 'living' ? "Total Size of Living Media" : "Total Dead Weight";
-                            document.getElementById('totalWastedTitle').innerText = headerLabel;
-                            document.getElementById('totalWasteValue').innerText = data.TotalWastedSize;
+                            window.renderTotals(data);
                             window.renderCoverageBanner(data);
                             window.renderMediaTable(data.Items, data);
                         });

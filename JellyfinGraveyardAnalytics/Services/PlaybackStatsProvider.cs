@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using JellyfinGraveyardAnalytics.Controllers;
+using JellyfinGraveyardAnalytics.Configuration;
 
 namespace JellyfinGraveyardAnalytics.Services
 {
@@ -34,9 +34,9 @@ namespace JellyfinGraveyardAnalytics.Services
     /// A single-slot cache with a time-to-live, guarding an expensive load.
     /// </summary>
     /// <remarks>
-    /// Separated from <see cref="PlaybackStatsProvider"/> so the caching behaviour can be
-    /// exercised without a Jellyfin server: the provider itself reaches for
-    /// <c>Plugin.Instance</c>, this does not.
+    /// Separated from <see cref="PlaybackStatsProvider"/> because the *cache* is what has to
+    /// be the singleton while the provider is scoped, and separately because the caching
+    /// behaviour is then testable on its own — it depends on nothing but a clock.
     /// </remarks>
     public sealed class TtlCache<T>
         where T : class
@@ -153,6 +153,8 @@ namespace JellyfinGraveyardAnalytics.Services
         public const int TracearrHistoryWeeks = 52;
 
         private readonly TracearrService _tracearrService;
+        private readonly Database.Repository _repository;
+        private readonly IPluginConfigurationSource _configSource;
         private readonly ILogger<PlaybackStatsProvider> _logger;
         private readonly TtlCache<PlaybackStats> _cache;
 
@@ -165,17 +167,21 @@ namespace JellyfinGraveyardAnalytics.Services
         /// </summary>
         public PlaybackStatsProvider(
             TracearrService tracearrService,
+            Database.Repository repository,
+            IPluginConfigurationSource configSource,
             TtlCache<PlaybackStats> cache,
             ILogger<PlaybackStatsProvider> logger)
         {
             _tracearrService = tracearrService;
+            _repository = repository;
+            _configSource = configSource;
             _cache = cache;
             _logger = logger;
         }
 
         public Task<PlaybackStats> GetAsync(CancellationToken cancellationToken)
         {
-            var config = Plugin.Instance.Configuration;
+            var config = _configSource.Current;
 
             // Everything the aggregates depend on. Changing any of it must not be served from
             // cache, so it is part of the key rather than something Invalidate has to catch.
@@ -195,7 +201,7 @@ namespace JellyfinGraveyardAnalytics.Services
 
         private async Task<PlaybackStats> LoadAsync(CancellationToken cancellationToken)
         {
-            var config = Plugin.Instance.Configuration;
+            var config = _configSource.Current;
 
             if (config.EnableTracearr)
             {
@@ -216,9 +222,7 @@ namespace JellyfinGraveyardAnalytics.Services
                 };
             }
 
-            var repository = Plugin.Instance.Repository;
-
-            if (!System.IO.File.Exists(repository.PlaybackDbPath))
+            if (!_repository.PlaybackDatabaseExists)
             {
                 throw new PlaybackDataUnavailableException(
                     "The Playback Reporting plugin database was not found.");
@@ -228,19 +232,19 @@ namespace JellyfinGraveyardAnalytics.Services
 
             return new PlaybackStats
             {
-                PlayCounts = repository.GetItemPlayCounts(threshold),
-                ItemViewers = repository.GetItemViewers(threshold),
-                LastPlayedDates = repository.GetItemLastPlayedDates(threshold),
-                PlayDurations = repository.GetItemPlayDurations(threshold),
-                HistoryFloorUtc = ReadHistoryFloor(repository)
+                PlayCounts = _repository.GetItemPlayCounts(threshold),
+                ItemViewers = _repository.GetItemViewers(threshold),
+                LastPlayedDates = _repository.GetItemLastPlayedDates(threshold),
+                PlayDurations = _repository.GetItemPlayDurations(threshold),
+                HistoryFloorUtc = ReadHistoryFloor()
             };
         }
 
-        private DateTime? ReadHistoryFloor(Database.Repository repository)
+        private DateTime? ReadHistoryFloor()
         {
             try
             {
-                return repository.GetHistoryFloorDate();
+                return _repository.GetHistoryFloorDate();
             }
             catch (Exception ex)
             {

@@ -15,22 +15,25 @@ namespace JellyfinGraveyardAnalytics.Services
     {
         private readonly Repository _repository;
         private readonly ILibraryManager _libraryManager;
-        private readonly IUserDataManager _userDataManager;
         private readonly IUserManager _userManager;
-        private readonly JellyfinGraveyardAnalytics.Configuration.PluginConfiguration _config;
+        private readonly JellyfinGraveyardAnalytics.Configuration.IPluginConfigurationSource _configSource;
 
+        /// <summary>
+        /// Resolved from the container per request. It used to be constructed by hand in four
+        /// controller actions, two of its five arguments pulled out of statics on
+        /// <c>Plugin</c> — and one of those, <c>IUserDataManager</c>, was never used by
+        /// anything here.
+        /// </summary>
         public AnalyticsService(
             Repository repository,
             ILibraryManager libraryManager,
-            IUserDataManager userDataManager,
             IUserManager userManager,
-            JellyfinGraveyardAnalytics.Configuration.PluginConfiguration config)
+            JellyfinGraveyardAnalytics.Configuration.IPluginConfigurationSource configSource)
         {
             _repository = repository;
             _libraryManager = libraryManager;
-            _userDataManager = userDataManager;
             _userManager = userManager;
-            _config = config;
+            _configSource = configSource;
         }
 
         /// <summary>
@@ -41,7 +44,7 @@ namespace JellyfinGraveyardAnalytics.Services
 
         /// <summary>
         /// Every episode in the library, grouped by series id. Built at most once per
-        /// request (this service is constructed per call) and never at all when the request
+        /// request (the service is registered scoped) and never at all when the request
         /// touches no series.
         /// </summary>
         /// <remarks>
@@ -111,7 +114,7 @@ namespace JellyfinGraveyardAnalytics.Services
             var historyFloorUtc = stats.HistoryFloorUtc;
 
             var now = DateTime.UtcNow;
-            var graceDays = _config.MorgueGraceDays;
+            var graceDays = _configSource.Current.MorgueGraceDays;
             var cutoff = now.AddDays(-graceDays);
 
             // Floor gate, replacing D1's grace clamp. An item added before playback history
@@ -129,7 +132,11 @@ namespace JellyfinGraveyardAnalytics.Services
                 return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
                 {
                     Items = new List<JellyfinGraveyardAnalytics.Models.LeastWatchedItem>(),
-                    TotalWastedSize = FormatBytes(0),
+                    TotalSize = FormatBytes(0),
+
+                    // Not "0 B": with no history there is no reclaimable figure to state.
+                    TotalWasted = null,
+                    TotalCoversAllMatches = false,
                     CoverageDays = 0,
                     GraceDays = graceDays,
                     IncludingUnverifiable = false,
@@ -238,13 +245,9 @@ namespace JellyfinGraveyardAnalytics.Services
 
             // Candidates history cannot speak to, counted whether or not they are shown so
             // the banner can say what is being withheld.
-            bool IsUnverifiable(JellyfinGraveyardAnalytics.Models.LeastWatchedItem x) =>
-                !historyFloorUtc.HasValue
-                || (x.DateAdded.HasValue && x.DateAdded.Value < historyFloorUtc.Value);
+            int unverifiableCandidates = morgueCandidates.Count(x => IsUnverifiable(x, historyFloorUtc));
 
-            int unverifiableCandidates = morgueCandidates.Count(IsUnverifiable);
-
-            var morgueItems = (includeUnverifiable ? morgueCandidates : morgueCandidates.Where(x => !IsUnverifiable(x)))
+            var morgueItems = (includeUnverifiable ? morgueCandidates : morgueCandidates.Where(x => !IsUnverifiable(x, historyFloorUtc)))
                 .OrderByDescending(x => x.Size)
                 .ThenBy(x => x.PlayCount)
                 .Take(limit)
@@ -254,8 +257,14 @@ namespace JellyfinGraveyardAnalytics.Services
             {
                 Items = morgueItems,
 
-                // Header and table now describe the same set (D1).
-                TotalWastedSize = FormatBytes(morgueItems.Sum(x => x.Size)),
+                // Header and table now describe the same set (D1), so this is capped by
+                // `limit` where the other two views' totals are not.
+                TotalSize = FormatBytes(morgueItems.Sum(x => x.Size)),
+                TotalCoversAllMatches = false,
+
+                // Identical to TotalSize in the default state, since the rows are zero-play and
+                // verifiable by construction. The two separate once either toggle is on.
+                TotalWasted = FormatReclaimable(morgueItems, historyFloorUtc),
                 CoverageDays = coverageDays,
                 GraceDays = graceDays,
                 IncludingUnverifiable = includeUnverifiable,
@@ -308,6 +317,44 @@ namespace JellyfinGraveyardAnalytics.Services
             }
 
             return query;
+        }
+
+        /// <summary>
+        /// Whether playback history can speak to this item at all. An item added before
+        /// history begins reads as zero-play whether it was loved or ignored, and with no
+        /// history at all nothing is verifiable. This is D1's floor gate, shared so that
+        /// anything *claiming* an item is unwatched applies the same test the Morgue does.
+        /// </summary>
+        private static bool IsUnverifiable(
+            JellyfinGraveyardAnalytics.Models.LeastWatchedItem item, DateTime? historyFloorUtc)
+            => !historyFloorUtc.HasValue
+                || (item.DateAdded.HasValue && item.DateAdded.Value < historyFloorUtc.Value);
+
+        /// <summary>
+        /// Formatted size of the rows that can be *shown* to be unwatched — zero plays, and
+        /// added inside the window history covers. Null when there is nothing to report, which
+        /// covers both "no reclaimable space" and "no history to judge by": the UI treats them
+        /// alike, and neither should print a claim.
+        /// </summary>
+        /// <remarks>
+        /// The floor test is the point. Without it this reported "never played" about exactly
+        /// the items D1 refuses to call unwatched — and on the Chapel, where the row action is
+        /// Exorcise and there is no coverage banner to qualify it.
+        /// </remarks>
+        private static string? FormatReclaimable(
+            IEnumerable<JellyfinGraveyardAnalytics.Models.LeastWatchedItem> rows,
+            DateTime? historyFloorUtc)
+        {
+            if (!historyFloorUtc.HasValue)
+            {
+                return null;
+            }
+
+            long reclaimable = rows
+                .Where(x => x.PlayCount == 0 && !IsUnverifiable(x, historyFloorUtc))
+                .Sum(x => x.Size);
+
+            return reclaimable > 0 ? FormatBytes(reclaimable) : null;
         }
 
         /// <summary>
@@ -446,12 +493,20 @@ namespace JellyfinGraveyardAnalytics.Services
                 };
             }).ToList();
 
+            // Over every condemned item, not just the `limit` shown: this header answers "how
+            // much is sitting in The Chapel", which the display cap must not change.
             var totalSize = mappedItems.Sum(x => x.Size);
 
             return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
             {
                 Items = mappedItems.OrderByDescending(x => x.Size).Take(limit).ToList(),
-                TotalWastedSize = FormatBytes(totalSize)
+                TotalSize = FormatBytes(totalSize),
+                TotalCoversAllMatches = true,
+
+                // A condemned item may well have been watched — condemning is a decision, not a
+                // measurement — so the reclaimable part is its own figure here, and it counts
+                // only rows history can actually vouch for.
+                TotalWasted = FormatReclaimable(mappedItems, stats.HistoryFloorUtc)
             };
         }
 
@@ -546,12 +601,29 @@ namespace JellyfinGraveyardAnalytics.Services
                     .Take(limit)
                     .ToList(),
 
-                TotalWastedSize = FormatBytes(totalLivingSize)
+                TotalSize = FormatBytes(totalLivingSize),
+                TotalCoversAllMatches = true
+
+                // TotalWasted stays null: every row here has at least one play, so there is
+                // nothing this view could call wasted. It was reporting living media in a
+                // field named for dead weight, and the UI renamed the label to hide it.
             };
         }
 
+        /// <exception cref="PlaybackDataUnavailableException">
+        /// The Playback Reporting database is not installed. Checked here rather than in the
+        /// controller so the guard sits with the code that needs it — the media tabs get the
+        /// same check from <see cref="PlaybackStatsProvider"/>, and this path used to reach
+        /// around to <c>Plugin.Instance.Repository</c> for it.
+        /// </exception>
         public JellyfinGraveyardAnalytics.Models.VisitorResponse GetVisitorActivity(string endDateString, int weeksBack)
         {
+            if (!_repository.PlaybackDatabaseExists)
+            {
+                throw new PlaybackDataUnavailableException(
+                    "The Playback Reporting plugin database was not found.");
+            }
+
             // UTC end to end: the rows are stored as naive UTC, so a local-time window
             // silently shifted every bound by the server's offset.
             if (!System.DateTime.TryParse(
@@ -572,19 +644,21 @@ namespace JellyfinGraveyardAnalytics.Services
             var activeUserIds = new HashSet<string>();
             var userWatchTimes = new Dictionary<string, long>();
 
+            var rowLimit = _configSource.Current.GuestbookRowLimit;
+
             var (rawData, truncated) = _repository.GetRawPlaybackActivity(
-                startDate, endDate, _config.GuestbookRowLimit);
+                startDate, endDate, rowLimit);
 
             var sessions = new List<JellyfinGraveyardAnalytics.Models.VisitorSession>();
 
             foreach (var row in rawData)
             {
-                string userId = row.UserId?.ToString().Replace("-", "") ?? "Unknown";
+                string userId = row.UserId?.Replace("-", string.Empty) ?? "Unknown";
                 string visitorName = userDictionary.TryGetValue(userId, out string? name) ? name : "Deleted User";
 
                 activeUserIds.Add(userId);
 
-                long durationSeconds = row.PlayDuration != null ? (long)row.PlayDuration : 0;
+                long durationSeconds = row.PlayDuration ?? 0;
 
                 if (!userWatchTimes.ContainsKey(visitorName)) userWatchTimes[visitorName] = 0;
                 userWatchTimes[visitorName] += durationSeconds;
@@ -593,21 +667,20 @@ namespace JellyfinGraveyardAnalytics.Services
                 string formattedDuration = $"{(int)System.Math.Floor(ts.TotalHours):D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
 
                 System.DateTime rowDate;
-                System.DateTime.TryParse(row.DateCreated?.ToString(), out rowDate);
+                System.DateTime.TryParse(row.DateCreated, out rowDate);
 
                 sessions.Add(new JellyfinGraveyardAnalytics.Models.VisitorSession
                 {
                     Time = System.DateTime.SpecifyKind(rowDate, System.DateTimeKind.Utc)
                         .ToLocalTime().ToString("MMM dd, yyyy - h:mm tt"),
                     Visitor = visitorName,
-                    Subject = row.ItemName?.ToString() ?? "Unknown",
-                    Type = row.ItemType?.ToString() ?? "Unknown",
-                    Client = row.ClientName?.ToString() ?? "Unknown",
-                    Device = row.DeviceName?.ToString() ?? "Unknown",
-                    Player = row.ClientName?.ToString() ?? string.Empty,
-                    Method = row.PlaybackMethod?.ToString() ?? "DirectPlay",
+                    Subject = row.ItemName ?? "Unknown",
+                    Type = row.ItemType ?? "Unknown",
+                    Device = row.DeviceName ?? "Unknown",
+                    Player = row.ClientName ?? string.Empty,
+                    Method = row.PlaybackMethod ?? "DirectPlay",
                     Duration = formattedDuration,
-                    IsTranscode = row.PlaybackMethod?.ToString().Contains("Transcode", System.StringComparison.OrdinalIgnoreCase) == true
+                    IsTranscode = row.PlaybackMethod?.Contains("Transcode", System.StringComparison.OrdinalIgnoreCase) == true
                 });
             }
 
@@ -634,7 +707,7 @@ namespace JellyfinGraveyardAnalytics.Services
                 Ghosts = ghosts,
                 Leaderboard = leaderboard,
                 Truncated = truncated,
-                RowLimit = _config.GuestbookRowLimit
+                RowLimit = rowLimit
             };
         }
     }

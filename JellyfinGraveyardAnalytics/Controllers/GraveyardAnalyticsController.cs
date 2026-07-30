@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.Collections;
 using MediaBrowser.Controller.Providers;
+using JellyfinGraveyardAnalytics.Configuration;
 using JellyfinGraveyardAnalytics.Services;
 
 namespace JellyfinGraveyardAnalytics.Controllers
@@ -49,10 +50,20 @@ namespace JellyfinGraveyardAnalytics.Controllers
         private readonly IProviderManager _providerManager;
         private readonly TracearrService _tracearrService;
         private readonly PlaybackStatsProvider _playbackStats;
+        private readonly AnalyticsService _analytics;
+        private readonly IPluginConfigurationSource _configSource;
 
+        /// <summary>
+        /// Everything arrives through the container now. <see cref="AnalyticsService"/> was
+        /// being constructed by hand in four actions, with two of its arguments read from
+        /// statics on <c>Plugin</c>, which is why none of this could be exercised without a
+        /// running server.
+        /// </summary>
         public GraveyardAnalyticsController(
             TracearrService tracearrService,
             PlaybackStatsProvider playbackStats,
+            AnalyticsService analytics,
+            IPluginConfigurationSource configSource,
             ILibraryManager libraryManager,
             ILogger<GraveyardAnalyticsController> logger,
             ICollectionManager collectionManager,
@@ -68,15 +79,9 @@ namespace JellyfinGraveyardAnalytics.Controllers
             _httpClientFactory = httpClientFactory;
             _providerManager = providerManager;
             _playbackStats = playbackStats;
+            _analytics = analytics;
+            _configSource = configSource;
         }
-
-        private AnalyticsService NewAnalyticsService()
-            => new AnalyticsService(
-                Plugin.Instance.Repository,
-                _libraryManager,
-                Plugin.UserDataManager,
-                _userManager,
-                Plugin.Instance.Configuration);
 
         [HttpGet("LeastWatched")]
         public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, [FromQuery] bool includeBarelyTouched = false, [FromQuery] bool includeUnverifiable = false, CancellationToken cancellationToken = default)
@@ -84,7 +89,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
             try
             {
                 var stats = await _playbackStats.GetAsync(cancellationToken).ConfigureAwait(false);
-                return Ok(NewAnalyticsService().GetLeastWatchedItems(
+                return Ok(_analytics.GetLeastWatchedItems(
                     mediaType,
                     mediaSearch,
                     limit,
@@ -110,7 +115,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
             try
             {
                 var stats = await _playbackStats.GetAsync(cancellationToken).ConfigureAwait(false);
-                return Ok(NewAnalyticsService().GetLivingItems(mediaType, mediaSearch, limit, stats));
+                return Ok(_analytics.GetLivingItems(mediaType, mediaSearch, limit, stats));
             }
             catch (PlaybackDataUnavailableException ex)
             {
@@ -130,7 +135,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
             try
             {
                 var stats = await _playbackStats.GetAsync(cancellationToken).ConfigureAwait(false);
-                return Ok(NewAnalyticsService().GetPurgatoryItems(mediaType, mediaSearch, limit, stats));
+                return Ok(_analytics.GetPurgatoryItems(mediaType, mediaSearch, limit, stats));
             }
             catch (PlaybackDataUnavailableException ex)
             {
@@ -361,11 +366,11 @@ namespace JellyfinGraveyardAnalytics.Controllers
         [HttpGet("Visitors")]
         public async Task<IActionResult> GetVisitors([FromQuery] string endDate, [FromQuery] int weeksBack = 1, CancellationToken cancellationToken = default)
         {
-            // Everything is inside the try, including the config read and the
-            // Repository construction it triggers — both can throw on a bad data path.
+            // Everything is inside the try, including the config read: it reaches
+            // Plugin.Instance, which is not guaranteed to be there.
             try
             {
-                var config = Plugin.Instance.Configuration;
+                var config = _configSource.Current;
 
                 if (config.EnableTracearr)
                 {
@@ -397,13 +402,14 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     }
                 }
 
-                if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
-                {
-                    return BadRequest(new { message = PlaybackUnavailableMessage });
-                }
-
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
-                return Ok(service.GetVisitorActivity(endDate, weeksBack));
+                // The missing-database check lives in the service now, thrown as the same
+                // exception the media tabs already answer 400 for.
+                return Ok(_analytics.GetVisitorActivity(endDate, weeksBack));
+            }
+            catch (PlaybackDataUnavailableException ex)
+            {
+                _logger.LogWarning(ex, "Could not assemble The Guestbook: playback data is unavailable.");
+                return BadRequest(new { message = PlaybackUnavailableMessage });
             }
             catch (Exception ex)
             {
@@ -417,19 +423,6 @@ namespace JellyfinGraveyardAnalytics.Controllers
         public IActionResult Ping()
         {
             return Ok(new { message = "The Graveyard Controller is ALIVE!" });
-        }
-    }
-
-    /// <summary>
-    /// Raised when the playback data source is missing or unusable, so the caller can be
-    /// told something actionable instead of the generic failure. Its message is logged, not
-    /// echoed — the client always receives a literal from the controller.
-    /// </summary>
-    public sealed class PlaybackDataUnavailableException : Exception
-    {
-        public PlaybackDataUnavailableException(string message)
-            : base(message)
-        {
         }
     }
 }

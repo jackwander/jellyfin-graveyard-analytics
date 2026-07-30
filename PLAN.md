@@ -86,7 +86,7 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | --- | --- | --- |
 | 1 | **Tracearr Morgue path double-prefixed.** Base builds `.../api/v1/public/{endpoint}`; this caller passes `"public/history?..."` → `/api/v1/public/public/history` → 404. The other two callers pass bare paths. With Tracearr enabled all three media tabs throw → `BadRequest` → UI shows an empty table with no message (no `.catch` anywhere). | `TracearrService.cs:31`, `:213` vs `:82`, `:96` |
 | 2 | **N+1 SQL inside a LINQ projection.** `GetItemPlayDurations()` sits inside the `Select` lambda — a full-table `SUM…GROUP BY` re-runs once per Chapel item. Correctly hoisted in `GetLivingItems`. | `AnalyticsService.cs:223` vs `:310` |
-| 3 | **Playback Reporting DB opened read-write.** `Mode=ReadOnly` is set, then overwritten without it. Writable handle on another plugin's SQLite file → lock contention; SQLite will *create* an empty `playback_reporting.db` if absent, masking "plugin not installed". | `Repository.cs:20-21`, `:27-28` |
+| 3 | **Playback Reporting DB opened read-write.** `Mode=ReadOnly` is set, then overwritten without it. Writable handle on another plugin's SQLite file → lock contention; SQLite will *create* an empty `playback_reporting.db` if absent, masking "plugin not installed". **Had no phase item; fixed in Phase 5** alongside item 19's rewrite of the same lines — see "Finding 3 — fixed here" below. | `Repository.cs:20-21`, `:27-28` (pre-fix) |
 | 4 | **Stored XSS in the admin dashboard.** Rows built by string-concatenating `item.Name`, Tracearr `username`, `mediaTitle`, `device` into `innerHTML`. All are attacker-influenced (a filename; any Tracearr-side user). Executes with the **admin's** session. `:569` is worse — name is escaped for `'` only, then embedded in an `onclick="..."` attribute, so a `"` breaks out. | `dashboard.html:481`, `:519`, `:569`, `:574` |
 | 5 | ~~**Webhook auth bypass when the key is unset.**~~ **Bypass struck by Phase 0 — see Phase 0 results.** Empty and whitespace query values bind to `null`, so `token` can never equal `string.Empty`; a fresh install fails closed. What remains (severity P1, still fixed in Phase 1): endpoint is `[AllowAnonymous]`; token in a query string lands in access logs; comparison is not fixed-time; handler is a stub that returns `{status:"Condemned"}` and does nothing. | `TracearrController.cs:44-49`, `:57` |
 | 6 | **Metric thresholds mutually inconsistent.** See D2. Almost certainly what `71a01f7` was chasing. | `Repository.cs:87`, `:112`, `:143`, `:171` |
@@ -100,6 +100,7 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | 25 | **`media/stale` does not exist either** — `GET /api/v1/public/media/stale` → 404. Both dead methods that Phase 2 deletes were built against an endpoint Tracearr does not serve, so they could never have worked. Strengthens item 8 from "dead code" to "dead *and* wrong". | `TracearrService.cs` (deleted methods) |
 | 26 | ~~Morgue aggregate truncated far worse than the cap suggests.~~ **Withdrawn** — the 847-sessions-per-week measurement it rested on was finding 27's ignored parameter returning all-time totals. A real week is 16. Its open question ("try `stats`/`users` before enlarging the cap") was answered: neither carries item identity, so `history` is the only possible source. Full write-up below. | — |
 | 29 | **The Chapel and Sanctuary read Time Played from the local database regardless of engine.** `GetItemPlayDurations` was called outside the engine branch, so a Tracearr row mixed two sources — and with no Playback Reporting database present, both tabs threw a 500 because the `File.Exists` guard was in the local branch only. Fixed by the Phase 4 provider. Full write-up below. | `AnalyticsService.cs:317`, `:410` (pre-fix) |
+| 30 | **`Last Breath` is displayed in the wrong timezone.** `GetItemLastPlayedDates` parses with ambient culture and `Kind = Unspecified`, so the value serializes without a `Z` and the browser reads a UTC instant as local — while `HistoryFloorUtc` on the same response does carry one. Pre-existing; surfaced by the Phase 5 review. Deferred to Phase 6. Full write-up below. | `Repository.cs:145`; `dashboard.html:678` |
 | 28 | **D2's play threshold was never applied on the Tracearr engine.** The local branch pushes `MinPlayDurationSeconds` into all three aggregates at the SQL level; `GetTracearrPlaybackStatsAsync` counted every history row as a play. So the same library reads as more-watched purely because Tracearr is enabled, and a false start keeps an item out of the Morgue. Measured: **102 of 847 sessions (12%) are under the 120s default.** Fixed — applied per row on `durationMs`. | `TracearrService.cs:445` (pre-fix) |
 | 27 | **`weeksBack` is not a Tracearr parameter.** `history` takes `startDate`/`endDate`/`timezone`; unknown keys are ignored, not rejected. So the Morgue aggregate walked *all* history while asking for 52 weeks, and the Guestbook's timeframe dropdown never narrowed anything. Fails **open** with a 200, unlike findings 1/24/25. | `TracearrService.cs:135`, `:158` (pre-fix) |
 
@@ -119,9 +120,9 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 
 ### P2 — architecture / build / hygiene
 
-- **Service-locator anti-pattern.** `new AnalyticsService(Plugin.Instance.Repository, …, Plugin.UserDataManager, …)` repeated 4×; the registrator registers only `HttpClient`. Untestable. `IUserDataManager` is injected and never used. — `controller:85,100,115,340`; `Plugin.cs:67-73`
-- **`Plugin.Repository` lazy getter is not thread-safe** — concurrent requests double-run `DatabaseInitializer` and `Directory.CreateDirectory`. — `Plugin.cs:30-40`
-- **Dead code:** `AdvancedAnalytics.db` + both its tables + `PlaybackEvent` (never read or written, and written to `plugins/configurations` rather than a data path); `Repository.GetWatchedMediaIds` / `GetOverallStats` / `GetActivityTimeline` / `GetAllActiveUserIds` / `GetWatchedMediaIdsByUser`; `TracearrService.GetStaleMediaAsync` / `GetStaleMediaAlignedAsync`; `VisitorSession.Client`.
+- ~~**Service-locator anti-pattern.**~~ **Fixed in Phase 5 item 18.** `new AnalyticsService(Plugin.Instance.Repository, …, Plugin.UserDataManager, …)` repeated 4×; the registrator registers only `HttpClient`. Untestable. `IUserDataManager` is injected and never used. — `controller:85,100,115,340`; `Plugin.cs:67-73` (pre-fix)
+- ~~**`Plugin.Repository` lazy getter is not thread-safe**~~ **Fixed in Phase 5 item 18** — the getter is gone; the container owns the singleton. Concurrent requests could double-run `DatabaseInitializer` and `Directory.CreateDirectory`. — `Plugin.cs:30-40` (pre-fix)
+- **Dead code:** `TracearrService.GetStaleMediaAsync` / `GetStaleMediaAlignedAsync` (deleted in Phase 2). ~~`AdvancedAnalytics.db` + both its tables + `PlaybackEvent`; `Repository.GetWatchedMediaIds` / `GetOverallStats` / `GetActivityTimeline` / `GetAllActiveUserIds` / `GetWatchedMediaIdsByUser`; `VisitorSession.Client`~~ — all deleted in Phase 5 item 19.
 - **`ex.Message` returned to the client in 8 places** — leaks filesystem paths. Several `catch` blocks never log. — `controller:90,105,120,146,272,312,330,346`
 - **csproj:** `Microsoft.AspNetCore.Mvc.Core 2.2.5` is EOL and redundant (Jellyfin.Controller brings the framework reference); `Microsoft.Data.Sqlite 8.0.8` on `net9.0` conflicts with Jellyfin's own SQLitePCLRaw and should be `<Private>false</Private>`. No `AssemblyVersion`/`FileVersion`, no analyzers, no `.editorconfig`, no `.sln`.
 - **`buiild.yaml`** — filename typo (tooling expects `build.yaml`), and `artifacts` lists the stale `JellyfinAnalyticsPlugin.dll` while `release.sh` ships `JellyfinGraveyardAnalyticsPlugin.dll`.
@@ -130,7 +131,7 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 - **Repo bloat:** 4 committed `.dll` under `Releases/`, tracked `.DS_Store`, tracked `.idea/workspace.xml`.
 - **Condemn downloads collection art from `raw.githubusercontent.com` at runtime** — hardcoded URL, no timeout, breaks offline. — `controller:206`, `:237`
 - **`dashboard.html`: 651 lines, nearly every element inline-styled, three hand-duplicated `<thead>` blocks, all state on `window.*`.** Any column change means editing three places. — `dashboard.html:120-186`
-- `LeastWatchedResponse.TotalWastedSize` is reused as "living total size"; the UI relabels it.
+- ~~`LeastWatchedResponse.TotalWastedSize` is reused as "living total size"; the UI relabels it.~~ **Fixed in Phase 5 item 20** — `TotalSize` plus a distinct `TotalWasted`.
 - README build instructions are wrong (no root project or sln). — `README.md:87-90`
 
 ---
@@ -784,6 +785,189 @@ skipped a rule the first one applied.
     five unused `Repository` methods, and `VisitorSession.Client`. Replace
     Dapper `dynamic` with typed DTOs.
 20. Rename `TotalWastedSize` → `TotalSize`; add a distinct `TotalWasted`.
+
+**Done when:** no service reads `Plugin.Instance` except the one adapter that
+exists to; the Playback Reporting handle is read-only and a missing database is
+not created; and no response field means two different things depending on the
+tab.
+
+#### Phase 5 results — **complete (2026-07-30)**
+
+Clean build, 0 warnings, 0 errors.
+
+- **Item 18 done.** `Repository` (singleton), `AnalyticsService` (scoped) and a new
+  `IPluginConfigurationSource` (singleton) are registered in
+  `GraveyardServiceRegistrator` and injected. The `Lazy<Repository>` fallback the
+  item allowed for was not needed: **exactly one** live `Plugin.Instance` read
+  remains in the plugin, `PluginConfigurationSource.Current`, which exists so the
+  static stops at one adapter. Jellyfin constructs the plugin itself, so that much
+  cannot be removed — but nothing else has to know it.
+  - `Plugin` lost the `Repository` lazy getter (the P2 thread-safety finding: two
+    concurrent requests could both run `Directory.CreateDirectory` and
+    `DatabaseInitializer`; the container does the same job correctly), the
+    `LibraryManager` / `UserManager` / `UserDataManager` statics — second copies of
+    services the container already had — and the three constructor parameters that
+    fed them. `IUserDataManager` was injected into `AnalyticsService` and never
+    read by anything: gone from both.
+  - **Configuration is read per use, not captured.** The old `AnalyticsService`
+    took a `PluginConfiguration` instance; the interface returns the live one, so a
+    setting saved between two requests takes effect on the second. Same for
+    `TracearrService`, whose typed `HttpClient` makes it transient.
+  - `NewAnalyticsService()` — the four-argument hand construction repeated in four
+    actions, two arguments from statics — is deleted.
+  - `PlaybackDataUnavailableException` moved out of the Controllers namespace into
+    Services. The services that throw it should not have to reference the API
+    layer, and `PlaybackStatsProvider` was doing exactly that.
+  - `GetVisitors` no longer reaches for `Plugin.Instance.Repository` to check the
+    database exists; `GetVisitorActivity` throws the same exception the media tabs
+    already answer `400` for. Identical response, one fewer dependency on the
+    controller.
+- **Item 19 done**, plus finding 3 (below). Deleted: `DatabaseInitializer`,
+  `PlaybackEvent`, the whole `AdvancedAnalytics.db` connection and both its tables,
+  the five unused `Repository` methods (`GetWatchedMediaIds`, `GetOverallStats`,
+  `GetActivityTimeline`, `GetAllActiveUserIds`, `GetWatchedMediaIdsByUser`) and
+  `VisitorSession.Client`, which carried the same value as `Player` on every
+  serialized Guestbook row and was read by nothing.
+  Dapper's `dynamic` is replaced by typed row DTOs — four private ones for the
+  aggregates and a public `PlaybackActivityRow` for the Guestbook. Text columns are
+  typed as `string` deliberately: SQLite column types are declarations, not
+  guarantees, and `DateCreated` is declared `DATETIME` while holding a naive UTC
+  string, so parsing stays where the fallback already lived.
+  - *Leftover, deliberately not touched:* existing installs keep a stray
+    `plugins/configurations/AdvancedAnalytics.db` (two empty tables, ~12 KB). The
+    plugin no longer creates or opens it. Deleting a file from a user's data
+    directory at startup is a new destructive behavior and not what this item asked
+    for; it can be removed by hand.
+- **Item 20 done.** `TotalWastedSize` → `TotalSize`, plus a distinct nullable
+  `TotalWasted` = the size of the returned rows with zero plays. The old field was
+  one string meaning two opposite things — "dead weight" on the Morgue and Chapel,
+  "total size of living media" on the Sanctuary — and `dashboard.html` rewrote the
+  label per tab to cover for it. Now: `TotalSize` is the headline on every tab with
+  an honest per-tab label, and `TotalWasted` appears as a "Never played" sub-line
+  **only when it differs** (so the Morgue's default zero-play state does not print
+  the same number twice). The Sanctuary sends `null` — every row there has plays,
+  so it has no wasted figure to report.
+  Chapel and Sanctuary totals still sum *every* matching row rather than the
+  `limit` shown, unchanged from Phase 4; those headers answer "how much is in
+  here", which a display cap must not change. Only the Morgue's total is over the
+  returned rows, which is D1.
+- **Evidence:** two new harnesses.
+  - `tests/harness/dotnet/repository` — **23 checks.** Constructs the real
+    `Repository` from the built DLL against a real SQLite file, which is the only
+    way to test the typed DTOs at all: Dapper decides mapping at runtime from
+    storage classes, so a clean build says nothing about it. Covers all four
+    aggregates, the history floor, the Guestbook row shape, the truncation flag, the
+    UTC window, dash-stripped id keys, the play threshold as a live query parameter
+    (3 plays at a 1s floor, 2 at 120s), an **empty table** (a fresh Playback
+    Reporting install), a **NULL-heavy newest row**, and finding 3's read-only
+    handle across four WAL arrangements.
+  - `tests/harness/dotnet/di` — **19 checks**, contributed by the review round.
+    Runs the real registrator into a real container with
+    `ValidateOnBuild + ValidateScopes` and resolves the controllers the way
+    `DefaultControllerActivator` does. This is what settles item 18's lifetimes:
+    `Repository` and `TtlCache` one per server, `AnalyticsService` one per request,
+    `TracearrService` transient, no captive dependency — and that resolving the
+    entire graph leaves `Plugin.Instance` **null**, so nothing depends on
+    plugin-construction order.
+  - Item 20 is covered in `actions.test.mjs`, now 17 checks. Every other harness
+    re-run green: `xss` 31/31, `ttlcache` 12/12, `visitormap` 21/21, `formatbytes`
+    and `probes` unchanged.
+
+**Caveat on the done-when.** One link in the DI chain is still read rather than
+measured: that Jellyfin's own container registers `IApplicationPaths`, which
+`Repository` — the only newly resolved type — depends on. It does; the released
+pre-Phase-5 `Plugin` constructor took it and the plugin loaded. Everything
+downstream of that is measured in `dotnet/di`.
+
+#### Phase 5 review round
+
+An independent review of the diff confirmed the DI rework by *building a container*
+rather than reading the code (that probe is now `tests/harness/dotnet/di`), and
+confirmed the `dynamic` → typed conversion is behaviour-identical on every input a
+live Playback Reporting database can produce. It found two real defects in item 20
+and one wrong claim in this write-up. All fixed in-phase:
+
+- **The Chapel asserted "never played" about exactly the items D1 refuses to call
+  unwatched.** `TotalWasted` was `PlayCount == 0` with no floor test, while
+  `GetPurgatoryItems` received `HistoryFloorUtc` and ignored it. Worst case: Tracearr
+  engine on (floor = 52 weeks ago), a 400 GB series condemned two years ago and
+  watched three years ago → the card read **"Never played: 400 GB"**. And undisclosed
+  — `renderCoverageBanner` returns early for any tab but the Morgue and the
+  per-row "unverified" marker is `isMorgue`-gated, so the one tab whose row action is
+  **Exorcise** carried the claim with nothing qualifying it. D1's predicate is now a
+  shared `IsUnverifiable` helper and both views compute `TotalWasted` through one
+  `FormatReclaimable`, which excludes rows predating history and returns **null**
+  rather than `"0 B"` when there is nothing to state. That also removes the
+  "Never played: 0 B" line a fully-watched Chapel used to print.
+- **The renamed field still meant two things per tab** — which is what this phase's
+  own done-when forbids. The Morgue's `TotalSize` is over the rows *returned* (D1);
+  the Chapel's and Sanctuary's are over *every* match. A 500-item library at
+  `limit=10` therefore showed the size of 10 items on one tab and 500 on the next, in
+  the same card, with nothing distinguishing them. Both behaviours are deliberate, so
+  the fix is disclosure: a new `TotalCoversAllMatches` boolean, and the label gains
+  "(listed rows)" when it is false.
+- **The WAL evidence was wrong** — see finding 3 above. Probe E3 passed because
+  SQLite created the `-shm`, so it did not test what it was named for. Corrected, and
+  probe E4 added for the arrangement that does fail.
+- Recorded rather than changed: the typed DTOs are tolerant on the *text* columns but
+  the numeric ones (`PlayDuration`, `TotalDuration`) are typed, so a REAL or BLOB
+  stored there fails the whole query where `dynamic` truncated it silently. Playback
+  Reporting cannot write those values, and a 500 beats silent garbage — the
+  overclaiming doc comment on `PlaybackActivityRow` is fixed to say so.
+- Also noted and left alone: `PlaybackDatabaseExists` is `File.Exists` only, so a
+  database present *without* the `PlaybackActivity` table still gives a generic 500
+  rather than the actionable 400. Unchanged from before Phase 5.
+
+#### Finding 3 (P0) — fixed here, having had no phase item
+
+Phase 0 **confirmed** it and no phase owned it: `Mode=ReadOnly` was set at
+`Repository.cs:21` and then overwritten without it at `:28`, so every read held a
+writable handle on another plugin's SQLite file. Because a writable open *creates*
+a missing file, an absent Playback Reporting install was silently manufactured as
+an empty database — which then reads as "installed, no activity yet", the one state
+that makes the Morgue's floor gate withhold everything for a reason the admin
+cannot see. Item 19 rewrote those exact lines, so leaving it would have meant
+re-writing the bug on purpose.
+
+Read-only now, with no second assignment, and a `PlaybackDatabaseExists` property
+that both callers check *before* connecting — a read-only open of a missing file
+throws SQLite error 14, and the admin needs "install Playback Reporting", not a
+database error.
+
+The fix has one plausible failure mode of its own, since Playback Reporting chooses
+the journal mode and a WAL read needs a `-shm` shared-memory index. Measured across
+four arrangements: a cleanly closed WAL database, a stale `-wal` copied out from
+under a live writer (what a killed server leaves behind), that same stale `-wal`
+with its `-shm` deleted, and that case again with the directory made read-only. The
+first three read fine; only the fourth fails (SQLite error 14), and Jellyfin writes
+to its data path constantly, so it is not a state a real server is in.
+
+**The reason matters and the first write-up had it backwards** (caught in review):
+the third case works because SQLite **creates** the `-shm`, not because it can do
+without one. So the read-only handle does write a sidecar file into another
+plugin's directory — it never modifies the database contents, which is the property
+finding 3 is about, but "only ever reads it" was too strong and is now qualified at
+`Repository.cs`. Evidence: `tests/harness/dotnet/repository`, probes A1-A3, D1-D2,
+E1-E4 — E3 asserts the directory listing before and after, which is what makes the
+`-shm` creation visible rather than assumed.
+
+### Finding 30 (P1) — `Last Breath` is displayed in the wrong timezone
+
+Surfaced by the Phase 5 review, **pre-existing and not introduced there** — but the
+two halves only became adjacent in a diff when item 19 rewrote them.
+
+`Repository.GetItemLastPlayedDates` parses with `DateTime.TryParse(text, out …)`:
+ambient culture, and `Kind = Unspecified`. `GetHistoryFloorDate`, forty lines below
+it, uses `CultureInfo.InvariantCulture` with
+`AssumeUniversal | AdjustToUniversal`. The stored values are naive UTC either way,
+so the *comparisons* are fine — but an `Unspecified` `DateTime` serializes with no
+`Z`, so `new Date(item.LastPlayed)` in `dashboard.html` reads a UTC instant as
+browser-local and the column is off by the viewer's offset. `HistoryFloorUtc` on
+the same response *does* carry its `Z`, so the two disagree.
+
+Left for Phase 6 rather than fixed in Phase 5: it is a display change with no
+structural component, and the xUnit project is where a round-trip assertion on it
+belongs. Parse it the way `GetHistoryFloorDate` already does.
 
 ### Phase 6 — Build & release
 

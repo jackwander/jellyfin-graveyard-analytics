@@ -11,13 +11,14 @@ commit `71a01f7` — 23 findings with `file:line` refs, two locked decisions (D1
 Morgue definition, D2 play threshold), and eight phases with done-when criteria.
 Do not re-derive the findings or re-litigate D1/D2.
 
-Current position: **Phases 0-4 done. Phase 5 is next.** Phases
+Current position: **Phases 0-5 done. Phase 6 is next.** Phases
 run in order. Results and evidence for each finished phase are recorded in
 `PLAN.md` under a "Phase N results" heading — read those before reopening a
 finding.
 
-Two findings changed on contact with reality. **Finding 5's webhook auth bypass
-was struck in Phase 0** (empty query values bind to `null`, so the endpoint
+Some findings changed on contact with reality. **Finding 3 belonged to no phase**
+and was fixed in Phase 5, since item 19 rewrote the same lines.
+**Finding 5's webhook auth bypass was struck in Phase 0** (empty query values bind to `null`, so the endpoint
 failed closed); the rest of finding 5 was real and is fixed. **D1's grace clamp
 was replaced by a floor gate** (decided 2026-07-30) after the clamp turned out to
 admit *more* unverifiable items the less history existed — see "D1 — RESOLVED" in
@@ -62,8 +63,15 @@ test project and no CI yet — both are Phase 6.
 
 ## Conventions
 
-- Playback data is read from the **Playback Reporting** plugin's SQLite database
-  (read-only; see finding 3). Its `PlayDuration` column is in seconds.
+- Playback data is read from the **Playback Reporting** plugin's SQLite database.
+  `Mode=ReadOnly` since Phase 5 and it must stay that way (finding 3): a writable
+  open *creates* a missing file, which then reads as "installed, no activity".
+  Check `Repository.PlaybackDatabaseExists` before any query — a read-only open of
+  a missing file throws SQLite error 14. `PlayDuration` is in seconds.
+- Services take their dependencies through the constructor and are registered in
+  `GraveyardServiceRegistrator`. `Plugin.Instance` is read in exactly one place,
+  `PluginConfigurationSource`; take `IPluginConfigurationSource` instead of adding
+  a second reader, and read `.Current` per use so a saved setting takes effect.
 - `[Chapel]` is the tag marking condemned items; the paired public collection is
   `"Leaving Soon: The Chapel"`.
 - Release flow is `release.sh vX.X.X.X`, then hand-edit `manifest.json`

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- net10.0 because only that runtime is installed locally; the plugin's net9.0
+         assembly loads into it, which is how the other reflection harnesses work. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>graveyard-repository</AssemblyName>
+    <RootNamespace>GraveyardRepository</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Same versions the plugin references. Jellyfin.Controller is here only for
+         IApplicationPaths, which Repository's constructor takes: the assembly identity has
+         to match the one the plugin was compiled against or the constructor won't bind. -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+</Project>

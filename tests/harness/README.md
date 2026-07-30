@@ -26,7 +26,7 @@ webhook logic changes, the mirror in `dotnet/probes/Program.cs` must change too.
 ```bash
 cd dashboard && npm install
 node xss.test.mjs        # 31 checks
-node actions.test.mjs    #  9 checks
+node actions.test.mjs    # 17 checks
 ```
 
 Loads `WebUI/dashboard.html`, dispatches `viewshow`, then calls the real
@@ -36,6 +36,15 @@ Covers: media titles and visitor `Visitor` / `Subject` / `Device` / `Player`
 rendering as literal text; no injected `<img>`; action buttons carrying no inline
 handler; per-tab column counts (morgue 6, others 9); a `0` value rendering as
 `"0"` rather than blank; empty states; the coverage banner in all three states.
+
+Since Phase 5 item 20, `actions.test.mjs` also drives `renderTotals` over the
+split response fields: the per-tab label and its "(listed rows)" qualifier when
+`TotalCoversAllMatches` is false, `TotalSize` as the headline figure, and the
+"Never played" sub-line appearing **only** when `TotalWasted` differs from it (so
+the Morgue's default zero-play state does not print the same number twice) and
+never for a null, which means "this view has nothing it can claim" rather than a
+claim of zero. Plus that leaving a tab clears the sub-line, since it is a claim
+about one tab's rows and `fetchAndRenderTable` still has no `.catch`.
 
 Since Phase 2 item 7 both engines return the same `VisitorResponse`, so the
 visitor checks drive one renderer with two payloads — Tracearr-shaped rows
@@ -109,9 +118,84 @@ Caveat worth keeping straight: this verifies the **cache**, not the database.
 Nothing here observes SQLite. The done-when holds because the factory runs once
 per window *and* is the only remaining caller of the repository aggregates — the
 second half of that is read from the code, not measured.
-`PlaybackStatsProvider` itself cannot be driven here at all; it reads
-`Plugin.Instance`, which needs a running Jellyfin. The caching was split out of
-it precisely so this much could be checked without one.
+
+Phase 5 removed the reason `PlaybackStatsProvider` itself could not be driven
+here — it takes its configuration and repository through the constructor now
+instead of reading `Plugin.Instance`. Nothing exercises it yet; that belongs to
+Phase 6's xUnit project, which can construct it outright.
+
+## dotnet/di/ — container resolution and lifetimes (Phase 5 item 18)
+
+```bash
+cd dotnet/di && dotnet run     # 19 checks
+```
+
+Runs the real `GraveyardServiceRegistrator` from the built DLL into a real
+`ServiceCollection` and builds the provider with
+`ValidateOnBuild + ValidateScopes`, mirroring how Jellyfin activates things:
+registrator via a parameterless ctor, controllers from a request scope *and* via
+`ActivatorUtilities` (what `DefaultControllerActivator` uses), plugin via
+`ActivatorUtilities` on the root provider. Jellyfin's own services are
+`DispatchProxy` stubs; every plugin registration is real.
+
+This is the harness for the part of item 18 that reading the code cannot settle —
+lifetimes: `Repository` and `TtlCache` one instance server-wide, `AnalyticsService`
+one per request (its episode index must not outlive the request),
+`TracearrService` transient so no `HttpClient` is pinned, and no captive
+dependency anywhere. Two checks are about the remaining static: resolving the
+whole graph leaves `Plugin.Instance` **null**, so nothing depends on
+plugin-construction order — and `PluginConfigurationSource.Current` throws an NRE
+if read before Jellyfin has constructed the plugin, which every media path has
+inside a `try` but `TracearrController`'s two actions do not.
+
+Not covered: that Jellyfin's own container registers `IApplicationPaths`, which
+`Repository` needs. It does — the released pre-Phase-5 `Plugin` ctor took it and
+loaded — but that is read from evidence, not measured here.
+
+## dotnet/repository/ — the real Repository over a real SQLite file (Phase 5 item 19)
+
+```bash
+cd dotnet/repository && dotnet run     # 23 checks
+```
+
+Constructs the **real** `Repository` from the built DLL (a stub `IApplicationPaths`
+pointed at a temp directory) and queries a SQLite database seeded through
+Playback Reporting's column declarations. Two claims need this:
+
+- **The typed row DTOs** that replaced Dapper's `dynamic`. Mapping is decided at
+  runtime from SQLite's storage classes, so a clean build proves nothing: the
+  checks cover all four aggregates, the history floor, the Guestbook row shape,
+  the row cap's truncation flag, the UTC window, dash-stripped id keys, and that
+  the play threshold is a real query parameter (3 plays at a 1s floor, 2 at 120s).
+  Two probes cover the states a typed mapper is likeliest to break on where
+  `dynamic` did not: an **empty `PlaybackActivity` table** — a fresh Playback
+  Reporting install, the most common state there is — and a **NULL-heavy newest
+  row**, which matters because Dapper builds one deserializer per query from the
+  *first* row's storage classes.
+- **Finding 3's read-only handle.** It reads `_playbackDbConn` off the instance by
+  reflection and asserts the string the repository *actually uses* says
+  `Mode=ReadOnly`, that a write through it is refused, that a missing database
+  throws instead of being invented, and that **no file is created** by the
+  attempt — the inverse of `probes` Probe A, which recorded the old behavior.
+- Four WAL arrangements, because Playback Reporting chooses the journal mode: a
+  cleanly closed WAL database, a stale `-wal` copied out from under a live writer
+  (what a killed server leaves), that same stale `-wal` with its `-shm` deleted,
+  and that case again with the directory itself made read-only. The first three
+  read fine; the fourth fails with SQLite error 14.
+
+  The third probe is the informative one, and an earlier version of it was
+  **wrong**: it was credited with showing that a read-only connection copes with a
+  missing `-shm`, when in fact SQLite *creates* the `-shm` — a read-only connection
+  writes that sidecar into another plugin's directory. It now asserts the file
+  list before and after to say so, and probe E4 pins the one arrangement that
+  genuinely fails, by removing write access to the directory. Jellyfin writes to
+  its data path constantly, so E4 is not a state a real server is in; it is here so
+  the read-only claim is no stronger than the evidence.
+
+The table DDL is a **replica** of Playback Reporting's, so it can drift — that
+plugin is not installed here. The declared types are the part that matters, and
+`DateCreated DATETIME` holding a naive UTC string is precisely the mismatch the
+string-typed DTOs exist for.
 
 ## dotnet/probes/ — SQLite and webhook behavior
 
@@ -120,7 +204,9 @@ cd dotnet/probes && dotnet run
 ```
 
 - **Probe A** — that `Data Source=<path>` without `Mode=ReadOnly` opens
-  read-write *and creates* a missing `playback_reporting.db` (finding 3).
+  read-write *and creates* a missing `playback_reporting.db` (finding 3). This is
+  a statement about SQLite, so it still holds; Phase 5 fixed the plugin side, and
+  `dotnet/repository` checks the shipped connection string against it.
 - **Probe D** — reflects over the built assembly to confirm `LeastWatchedItem`
   serializes no filesystem path (the success-body leak found in review).
 - **Probe B** — the *old* query-string token binding, run under both settings of

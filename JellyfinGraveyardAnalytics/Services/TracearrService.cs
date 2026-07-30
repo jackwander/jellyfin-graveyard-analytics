@@ -50,15 +50,24 @@ namespace JellyfinGraveyardAnalytics.Services
         private const string HistoryTimeZone = "UTC";
 
         private readonly HttpClient _httpClient;
+        private readonly IPluginConfigurationSource _configSource;
         private readonly ILogger<TracearrService> _logger;
 
-        public TracearrService(HttpClient httpClient, ILogger<TracearrService> logger)
+        public TracearrService(
+            HttpClient httpClient,
+            IPluginConfigurationSource configSource,
+            ILogger<TracearrService> logger)
         {
             _httpClient = httpClient;
+            _configSource = configSource;
             _logger = logger;
         }
 
-        private PluginConfiguration Config => Plugin.Instance.Configuration;
+        /// <summary>
+        /// Read per use, not captured: the URL and key can change between two requests, and a
+        /// typed HttpClient is transient so this object may well outlive nothing at all.
+        /// </summary>
+        private PluginConfiguration Config => _configSource.Current;
 
         /// <summary>
         /// Builds an authenticated request. <paramref name="endpoint"/> is relative to

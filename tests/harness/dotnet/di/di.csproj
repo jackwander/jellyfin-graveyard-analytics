@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- net10.0 because only that runtime is installed locally; the plugin's net9.0
+         assembly loads into it, as in the other reflection harnesses. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <!-- Off deliberately: this probe stores resolution failures in `Exception ex = null`
+         locals, and annotating every one of them adds noise, not safety. -->
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>graveyard-di</AssemblyName>
+    <RootNamespace>GraveyardDi</RootNamespace>
+    <NoWarn>NU1903</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Jellyfin.Controller for IPluginServiceRegistrator / IApplicationPaths and the
+         service interfaces the controllers ask for; the DI and Http packages are what
+         Jellyfin's own host builds its container from. -->
+    <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.11" />
+  </ItemGroup>
+</Project>

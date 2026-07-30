@@ -8,7 +8,6 @@ namespace JellyfinGraveyardAnalytics.Models
         public string Visitor { get; set; } = string.Empty;
         public string Subject { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
-        public string Client { get; set; } = string.Empty;
         public string Device { get; set; } = string.Empty;
 
         /// <summary>
@@ -16,6 +15,11 @@ namespace JellyfinGraveyardAnalytics.Models
         /// Distinct from <see cref="Device"/>: "Living Room TV" is the device, "Jellyfin
         /// Android TV" is the player.
         /// </summary>
+        /// <remarks>
+        /// There was a <c>Client</c> property here too, carrying the same value the local
+        /// engine already put in this one. Nothing read it, and it was serialized on every
+        /// Guestbook row.
+        /// </remarks>
         public string Player { get; set; } = string.Empty;
 
         public string Method { get; set; } = string.Empty;

@@ -7,10 +7,47 @@ namespace JellyfinGraveyardAnalytics.Models
         public List<LeastWatchedItem> Items { get; set; } = new List<LeastWatchedItem>();
 
         /// <summary>
-        /// Sum of the rows actually returned, formatted. Header and table now describe the
-        /// same set, which they did not before (D1).
+        /// Formatted total size of the rows this response describes. Named for what it is:
+        /// as <c>TotalWastedSize</c> it also carried the Sanctuary's "total size of living
+        /// media", so the one field meant two opposite things and the UI relabelled it per
+        /// tab to cover for that.
         /// </summary>
-        public string TotalWastedSize { get; set; } = "0 GB";
+        /// <remarks>
+        /// Whether it covers the rows in <see cref="Items"/> or every matching row differs by
+        /// view, so <see cref="TotalCoversAllMatches"/> says which — the figure alone is
+        /// ambiguous, and the same card in the same position on screen means one thing on the
+        /// Morgue and another on the Chapel.
+        /// </remarks>
+        public string TotalSize { get; set; } = "0 B";
+
+        /// <summary>
+        /// True when <see cref="TotalSize"/> is the total over every matching item; false when
+        /// it covers only the rows in <see cref="Items"/>, i.e. is capped by <c>limit</c>.
+        /// </summary>
+        /// <remarks>
+        /// The Morgue's total is over the rows returned, so its header and table describe the
+        /// same set (D1) — false. The Chapel's and Sanctuary's headers answer "how much is in
+        /// here", which a display cap must not change — true. Without this the two are
+        /// indistinguishable on the wire.
+        /// </remarks>
+        public bool TotalCoversAllMatches { get; set; }
+
+        /// <summary>
+        /// Formatted size of those rows that can be *shown* never to have been played — the
+        /// part of <see cref="TotalSize"/> that deleting would reclaim without losing anything
+        /// anyone has watched. Null when there is nothing to state.
+        /// </summary>
+        /// <remarks>
+        /// Null covers three cases the UI treats alike, because none of them should print a
+        /// claim: the Sanctuary, which lists only items *with* plays; no playback history to
+        /// judge by; and nothing reclaimable. Rows added before history begins are excluded —
+        /// they read as unplayed whether or not they were played, which is D1's floor gate, and
+        /// asserting otherwise would be worst on the Chapel, where the row action is Exorcise
+        /// and no coverage banner qualifies it.
+        /// Equal to <see cref="TotalSize"/> in the Morgue's default state, since that view is
+        /// zero-play and verifiable by construction.
+        /// </remarks>
+        public string? TotalWasted { get; set; }
 
         /// <summary>
         /// Days of playback history available. Null where not computed (only the Morgue

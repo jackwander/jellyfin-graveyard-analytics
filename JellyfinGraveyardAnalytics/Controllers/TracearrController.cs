@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using JellyfinGraveyardAnalytics.Configuration;
 using JellyfinGraveyardAnalytics.Services;
 
 namespace JellyfinGraveyardAnalytics.Api
@@ -23,11 +24,16 @@ namespace JellyfinGraveyardAnalytics.Api
         private const string WebhookTokenHeader = "X-Tracearr-Token";
 
         private readonly TracearrService _tracearrService;
+        private readonly IPluginConfigurationSource _configSource;
         private readonly ILogger<TracearrController> _logger;
 
-        public TracearrController(TracearrService tracearrService, ILogger<TracearrController> logger)
+        public TracearrController(
+            TracearrService tracearrService,
+            IPluginConfigurationSource configSource,
+            ILogger<TracearrController> logger)
         {
             _tracearrService = tracearrService;
+            _configSource = configSource;
             _logger = logger;
         }
 
@@ -72,7 +78,7 @@ namespace JellyfinGraveyardAnalytics.Api
         public IActionResult ReceiveCondemnWebhook([FromBody] TracearrWebhookPayload? payload)
         {
             // ...but we secure it by requiring the Tracearr API Key in a header.
-            var config = Plugin.Instance.Configuration;
+            var config = _configSource.Current;
 
             // The key outlives the toggle — savePluginConfig writes it either way — so an
             // integration that has been switched off must not keep an open door behind it.

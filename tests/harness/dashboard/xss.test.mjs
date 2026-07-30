@@ -24,7 +24,7 @@ window.alert = () => { alerts++; };
 window.confirm = () => false;
 window.ApiClient = {
   getUrl: (u) => u,
-  getJSON: () => Promise.resolve({ Items: [], TotalWastedSize: '0 B' }),
+  getJSON: () => Promise.resolve({ Items: [], TotalSize: '0 B' }),
   getPluginConfiguration: () => Promise.resolve({}),
   updatePluginConfiguration: () => Promise.resolve({}),
   ajax: () => Promise.resolve({}),
