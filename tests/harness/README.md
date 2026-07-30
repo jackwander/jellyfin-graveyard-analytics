@@ -27,6 +27,7 @@ webhook logic changes, the mirror in `dotnet/probes/Program.cs` must change too.
 cd dashboard && npm install
 node xss.test.mjs        # 31 checks
 node actions.test.mjs    # 17 checks
+node dates.test.mjs      #  6 checks
 ```
 
 Loads `WebUI/dashboard.html`, dispatches `viewshow`, then calls the real
@@ -51,7 +52,17 @@ visitor checks drive one renderer with two payloads — Tracearr-shaped rows
 (`ProgressPercent` set → a Fate verdict) and local ones (`ProgressPercent` null →
 a dash, never a guessed verdict) — plus the truncation notice's `colSpan`.
 
-Both accept a path argument, which is how the checks were shown to be
+`dates.test.mjs` is the browser half of finding 30's round trip: it drives
+`renderMediaTable` with `"2026-03-04T03:30:00Z"` and with the pre-fix zoneless
+`"2026-03-04T03:30:00"`, and shows the Last Breath cell reading **3 March** against
+**4 March** for one instant. It **re-execs itself under `TZ=America/Los_Angeles`** —
+on a UTC machine the bug is invisible and the test would pass vacuously, and plenty
+of servers run UTC. It also pins the twelve-month colour cut, because the cell is a
+verdict as well as a date and an offset-sized error can cross it. Expectations are
+built from explicit calendar components and formatted the same way the page formats,
+so the runner's *locale* does not matter — only which day it lands on.
+
+All three accept a path argument, which is how the checks were shown to be
 non-vacuous — against the pre-Phase-1 file, `xss.test.mjs` **fails 12**,
 including an injected live `onmouseover` handler:
 
@@ -155,7 +166,8 @@ loaded — but that is read from evidence, not measured here.
 ## dotnet/repository/ — the real Repository over a real SQLite file (Phase 5 item 19)
 
 ```bash
-cd dotnet/repository && dotnet run     # 23 checks
+cd dotnet/repository && dotnet run     # 27 checks
+GRAVEYARD_DLL=/path/to/old/plugin.dll dotnet run   # non-vacuity check, expect B3b + G1 to fail
 ```
 
 Constructs the **real** `Repository` from the built DLL (a stub `IApplicationPaths`
@@ -183,7 +195,14 @@ Playback Reporting's column declarations. Two claims need this:
   and that case again with the directory itself made read-only. The first three
   read fine; the fourth fails with SQLite error 14.
 
-  The third probe is the informative one, and an earlier version of it was
+- **Finding 30's round trip** (probes B3b, G1-G3): stored string → `Repository` →
+  the real `LeastWatchedItem` → JSON, asserting the `DateTimeKind` and then the
+  serialized `"LastPlayed":"2026-03-04T11:30:00Z"`. Pointed at a pre-fix assembly
+  via `GRAVEYARD_DLL` these two fail and the other 25 pass, which is what makes them
+  a test of the fix rather than of the harness. `dates.test.mjs` carries it into the
+  browser.
+
+  The third WAL probe is the informative one, and an earlier version of it was
   **wrong**: it was credited with showing that a read-only connection copes with a
   missing `-shm`, when in fact SQLite *creates* the `-shm` — a read-only connection
   writes that sidecar into another plugin's directory. It now asserts the file

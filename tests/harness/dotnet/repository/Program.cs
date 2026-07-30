@@ -107,6 +107,12 @@ try
         lastPlayed[ItemA] == new DateTime(2026, 3, 4, 11, 30, 0),
         Dump(lastPlayed));
 
+    // Finding 30. Kind is the whole bug: an Unspecified value serializes with no offset, so the
+    // browser reads a UTC instant as its own local time. It is asserted here rather than only at
+    // the JSON, because Kind is what the serializer reads and it is invisible in `==`.
+    Check("B3b last-played carries Kind=Utc, like the history floor beside it",
+        lastPlayed[ItemA].Kind == DateTimeKind.Utc, lastPlayed[ItemA].Kind.ToString());
+
     var durations = (Dictionary<string, long>)Call(repo, "GetItemPlayDurations", 120)!;
     Check("B4 durations sum only qualifying sessions (600+400, not +30)",
         durations[ItemA] == 1000 && durations[ItemBFlat] == 900,
@@ -121,6 +127,39 @@ try
     Check("B6 history floor is the oldest row of all, threshold or not, as UTC",
         floor == new DateTime(2026, 1, 2, 10, 0, 0, DateTimeKind.Utc) && floor.Value.Kind == DateTimeKind.Utc,
         floor?.ToString("o") ?? "null");
+
+    // ------------------------------------- G. the round trip that finding 30 actually broke
+    // Stored string -> Repository -> the DTO the dashboard receives -> JSON. The wire format is
+    // the only place the bug was visible: every server-side comparison of these values is
+    // tick-for-tick and so was unaffected, which is why it survived to be found by reading.
+    var itemDto = Activator.CreateInstance(
+        pluginAsm.GetType("JellyfinGraveyardAnalytics.Models.LeastWatchedItem")!)!;
+    itemDto.GetType().GetProperty("LastPlayed")!.SetValue(itemDto, lastPlayed[ItemA]);
+    var dtoJson = System.Text.Json.JsonSerializer.Serialize(itemDto);
+
+    Check("G1 LastPlayed serializes as a UTC instant, with the Z a browser needs",
+        dtoJson.Contains("\"LastPlayed\":\"2026-03-04T11:30:00Z\"", StringComparison.Ordinal), dtoJson);
+
+    // What the old parse produced, for contrast: same ticks, no offset, and `new Date()` in the
+    // dashboard then reads it as local. tests/harness/dashboard/dates.test.mjs takes it from here.
+    var unspecified = DateTime.SpecifyKind(lastPlayed[ItemA], DateTimeKind.Unspecified);
+    itemDto.GetType().GetProperty("LastPlayed")!.SetValue(itemDto, unspecified);
+    var oldJson = System.Text.Json.JsonSerializer.Serialize(itemDto);
+
+    Check("G2 the pre-fix Kind would have shipped the same clock time with no zone at all",
+        oldJson.Contains("\"LastPlayed\":\"2026-03-04T11:30:00\"", StringComparison.Ordinal)
+        && !oldJson.Contains("2026-03-04T11:30:00Z", StringComparison.Ordinal), oldJson);
+
+    // The floor is on the same response and always carried its Z; that mismatch is what made the
+    // dashboard's "predates history" row marker compare two differently-anchored values.
+    var floorDto = Activator.CreateInstance(
+        pluginAsm.GetType("JellyfinGraveyardAnalytics.Models.LeastWatchedResponse")!)!;
+    floorDto.GetType().GetProperty("HistoryFloorUtc")!.SetValue(floorDto, Call(repo, "GetHistoryFloorDate"));
+    var floorJson = System.Text.Json.JsonSerializer.Serialize(floorDto);
+
+    Check("G3 HistoryFloorUtc is anchored the same way, so the two are now comparable",
+        floorJson.Contains("\"HistoryFloorUtc\":\"2026-01-02T10:00:00Z\"", StringComparison.Ordinal),
+        floorJson);
 
     // ------------------------------------------- C. the Guestbook row DTO and its truncation
     var window = Call(repo, "GetRawPlaybackActivity",

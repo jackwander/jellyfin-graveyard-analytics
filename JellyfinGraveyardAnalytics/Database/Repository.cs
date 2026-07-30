@@ -156,8 +156,7 @@ namespace JellyfinGraveyardAnalytics.Database
             {
                 var itemId = NormalizeItemId(row.ItemId);
 
-                if (itemId != null
-                    && DateTime.TryParse(row.LastPlayedDate, out var parsedDate))
+                if (itemId != null && TryParseStoredUtc(row.LastPlayedDate, out var parsedDate))
                 {
                     dict[itemId] = parsedDate;
                 }
@@ -207,19 +206,27 @@ namespace JellyfinGraveyardAnalytics.Database
             var floor = connection.QuerySingleOrDefault<string?>(
                 "SELECT MIN(DateCreated) FROM PlaybackActivity");
 
-            if (string.IsNullOrWhiteSpace(floor))
-            {
-                return null;
-            }
+            return TryParseStoredUtc(floor, out var parsed) ? parsed : null;
+        }
 
-            return DateTime.TryParse(
-                floor,
+        /// <summary>
+        /// Parses a stored timestamp as the naive UTC it is, yielding a
+        /// <see cref="DateTimeKind.Utc"/> value.
+        /// </summary>
+        /// <remarks>
+        /// Shared because the two callers had drifted apart and only one was right (finding 30).
+        /// Both parts matter. <see cref="CultureInfo.InvariantCulture"/>, because the format is
+        /// SQLite's and not the server operator's. And <c>AssumeUniversal | AdjustToUniversal</c>,
+        /// because without them the result is <see cref="DateTimeKind.Unspecified"/> — which
+        /// serializes with no <c>Z</c>, so a browser reads the instant as its own local time and
+        /// the column is a whole day out west of UTC.
+        /// </remarks>
+        private static bool TryParseStoredUtc(string? value, out DateTime utc)
+            => DateTime.TryParse(
+                value,
                 CultureInfo.InvariantCulture,
                 DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
-                out var parsed)
-                ? parsed
-                : null;
-        }
+                out utc);
 
         /// <summary>
         /// Guestbook rows, newest first, capped at <paramref name="rowLimit"/>. Returns

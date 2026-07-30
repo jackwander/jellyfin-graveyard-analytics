@@ -306,12 +306,8 @@ namespace JellyfinGraveyardAnalytics.Services
             var elapsed = TimeSpan.FromSeconds(durationSeconds);
 
             var startedAt = ReadString(row, "startedAt");
-            var time = DateTime.TryParse(
-                startedAt,
-                System.Globalization.CultureInfo.InvariantCulture,
-                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
-                out var started)
-                ? DateTime.SpecifyKind(started, DateTimeKind.Utc).ToLocalTime().ToString("MMM dd, yyyy - h:mm tt", System.Globalization.CultureInfo.CurrentCulture)
+            var time = TryParseUtc(startedAt, out var started)
+                ? started.ToLocalTime().ToString("MMM dd, yyyy - h:mm tt", System.Globalization.CultureInfo.CurrentCulture)
                 : "Unknown Date";
 
             var progressMs = ReadInt64(row, "progressMs");
@@ -505,7 +501,11 @@ namespace JellyfinGraveyardAnalytics.Services
                         // 4. Track Last Played Date
                         if (item.TryGetProperty("startedAt", out var startedProp) && startedProp.ValueKind == JsonValueKind.String)
                         {
-                            if (DateTime.TryParse(startedProp.GetString(), out var dt))
+                            // Through the same parse as everything else here (finding 30). A bare
+                            // TryParse honoured the trailing Z by converting to *local* time, so
+                            // this engine put a Local value in the field the local engine fills
+                            // with UTC — same column, two meanings, differing by the offset.
+                            if (TryParseUtc(startedProp.GetString(), out var dt))
                             {
                                 if (!lastPlayedDates.ContainsKey(itemId) || dt > lastPlayedDates[itemId])
                                 {
@@ -557,15 +557,20 @@ namespace JellyfinGraveyardAnalytics.Services
         /// UTC, falling back to today — so switching engines does not shift the window.
         /// </summary>
         private static DateTime ParseEndDate(string endDate)
-        {
-            return DateTime.TryParse(
-                endDate,
+            => TryParseUtc(endDate, out var parsed) ? parsed.Date : DateTime.UtcNow.Date;
+
+        /// <summary>
+        /// Parses a Tracearr timestamp to a <see cref="DateTimeKind.Utc"/> value. One helper for
+        /// all three callers, because a bare <c>DateTime.TryParse</c> returns Local for an
+        /// offset-bearing string and Unspecified for one without, and both end up in fields the
+        /// local engine fills with UTC.
+        /// </summary>
+        private static bool TryParseUtc(string? value, out DateTime utc)
+            => DateTime.TryParse(
+                value,
                 System.Globalization.CultureInfo.InvariantCulture,
                 System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
-                out var parsed)
-                ? parsed.Date
-                : DateTime.UtcNow.Date;
-        }
+                out utc);
 
         /// <summary>
         /// Reads a page count out of a Tracearr <c>meta</c> block, tolerating a missing,

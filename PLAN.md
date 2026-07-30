@@ -100,7 +100,7 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | 25 | **`media/stale` does not exist either** — `GET /api/v1/public/media/stale` → 404. Both dead methods that Phase 2 deletes were built against an endpoint Tracearr does not serve, so they could never have worked. Strengthens item 8 from "dead code" to "dead *and* wrong". | `TracearrService.cs` (deleted methods) |
 | 26 | ~~Morgue aggregate truncated far worse than the cap suggests.~~ **Withdrawn** — the 847-sessions-per-week measurement it rested on was finding 27's ignored parameter returning all-time totals. A real week is 16. Its open question ("try `stats`/`users` before enlarging the cap") was answered: neither carries item identity, so `history` is the only possible source. Full write-up below. | — |
 | 29 | **The Chapel and Sanctuary read Time Played from the local database regardless of engine.** `GetItemPlayDurations` was called outside the engine branch, so a Tracearr row mixed two sources — and with no Playback Reporting database present, both tabs threw a 500 because the `File.Exists` guard was in the local branch only. Fixed by the Phase 4 provider. Full write-up below. | `AnalyticsService.cs:317`, `:410` (pre-fix) |
-| 30 | **`Last Breath` is displayed in the wrong timezone.** `GetItemLastPlayedDates` parses with ambient culture and `Kind = Unspecified`, so the value serializes without a `Z` and the browser reads a UTC instant as local — while `HistoryFloorUtc` on the same response does carry one. Pre-existing; surfaced by the Phase 5 review. Deferred to Phase 6. Full write-up below. | `Repository.cs:145`; `dashboard.html:678` |
+| 30 | **`Last Breath` is displayed in the wrong timezone.** `GetItemLastPlayedDates` parses with ambient culture and `Kind = Unspecified`, so the value serializes without a `Z` and the browser reads a UTC instant as local — while `HistoryFloorUtc` on the same response does carry one. Pre-existing; surfaced by the Phase 5 review. **Fixed in the Phase 5 addendum**, along with a second site the review did not reach (the Tracearr engine produced `Local` for the same field). Full write-up below. | `Repository.cs:145`, `TracearrService.cs:508` (pre-fix); `dashboard.html:690` |
 | 28 | **D2's play threshold was never applied on the Tracearr engine.** The local branch pushes `MinPlayDurationSeconds` into all three aggregates at the SQL level; `GetTracearrPlaybackStatsAsync` counted every history row as a play. So the same library reads as more-watched purely because Tracearr is enabled, and a false start keeps an item out of the Morgue. Measured: **102 of 847 sessions (12%) are under the 120s default.** Fixed — applied per row on `durationMs`. | `TracearrService.cs:445` (pre-fix) |
 | 27 | **`weeksBack` is not a Tracearr parameter.** `history` takes `startDate`/`endDate`/`timezone`; unknown keys are ignored, not rejected. So the Morgue aggregate walked *all* history while asking for 52 weeks, and the Guestbook's timeframe dropdown never narrowed anything. Fails **open** with a 200, unlike findings 1/24/25. | `TracearrService.cs:135`, `:158` (pre-fix) |
 
@@ -918,6 +918,14 @@ and one wrong claim in this write-up. All fixed in-phase:
   database present *without* the `PlaybackActivity` table still gives a generic 500
   rather than the actionable 400. Unchanged from before Phase 5.
 
+#### Phase 5 addendum — finding 30 *(2026-07-30)*
+
+The review's one pre-existing find was written up as deferred and then done anyway,
+because it was a two-line fix once its round trip could be tested: **finding 30 is
+fixed**, at both sites, with `dates.test.mjs` added and the repository harness grown
+to 27 checks. Write-up below. Nothing else in Phase 5 changed; the phase's own
+done-when criteria are unaffected.
+
 #### Finding 3 (P0) — fixed here, having had no phase item
 
 Phase 0 **confirmed** it and no phase owned it: `Mode=ReadOnly` was set at
@@ -951,23 +959,61 @@ finding 3 is about, but "only ever reads it" was too strong and is now qualified
 E1-E4 — E3 asserts the directory listing before and after, which is what makes the
 `-shm` creation visible rather than assumed.
 
-### Finding 30 (P1) — `Last Breath` is displayed in the wrong timezone
+### Finding 30 (P1) — `Last Breath` was displayed in the wrong timezone — **FIXED (Phase 5 addendum, 2026-07-30)**
 
 Surfaced by the Phase 5 review, **pre-existing and not introduced there** — but the
 two halves only became adjacent in a diff when item 19 rewrote them.
 
-`Repository.GetItemLastPlayedDates` parses with `DateTime.TryParse(text, out …)`:
+`Repository.GetItemLastPlayedDates` parsed with `DateTime.TryParse(text, out …)`:
 ambient culture, and `Kind = Unspecified`. `GetHistoryFloorDate`, forty lines below
-it, uses `CultureInfo.InvariantCulture` with
+it, used `CultureInfo.InvariantCulture` with
 `AssumeUniversal | AdjustToUniversal`. The stored values are naive UTC either way,
-so the *comparisons* are fine — but an `Unspecified` `DateTime` serializes with no
-`Z`, so `new Date(item.LastPlayed)` in `dashboard.html` reads a UTC instant as
-browser-local and the column is off by the viewer's offset. `HistoryFloorUtc` on
-the same response *does* carry its `Z`, so the two disagree.
+so every server-side *comparison* was tick-for-tick correct — which is why this
+survived to be found by reading rather than by anyone noticing. The wire format is
+where it showed: an `Unspecified` `DateTime` serializes with no `Z`, so
+`new Date(item.LastPlayed)` reads a UTC instant as browser-local.
+`HistoryFloorUtc` on the same response *did* carry its `Z`, so the two were
+anchored differently.
 
-Left for Phase 6 rather than fixed in Phase 5: it is a display change with no
-structural component, and the xUnit project is where a round-trip assertion on it
-belongs. Parse it the way `GetHistoryFloorDate` already does.
+**A second site the review did not reach.** `GetTracearrPlaybackStatsAsync` filled
+the same field with a bare `DateTime.TryParse` of Tracearr's `startedAt`. Because
+that string carries a trailing `Z`, the default styles *honour* it — by converting
+to **local** time, `Kind = Local`. So the two engines put differently-anchored
+values in one field: the local engine `Unspecified`, Tracearr `Local`, neither
+`Utc`. Same class as findings 28 and 29 — the Tracearr path reimplements instead of
+reusing, and drifted.
+
+Both now go through one helper each (`Repository.TryParseStoredUtc`,
+`TracearrService.TryParseUtc`), which is also what stops the pair drifting apart
+again; `TracearrService` had three near-identical parses and now has one.
+
+**Not only cosmetic.** `renderMediaTable` colours the cell against a twelve-month
+cut, so an offset-sized error can move a row across that verdict — a long-dead
+title rendered as a live one. The offset exceeds the margin in every zone west of
+UTC+1.
+
+Evidence — a round trip in two halves, both non-vacuous:
+
+- `tests/harness/dotnet/repository`, probes B3b and G1-G3 (now 27 checks): stored
+  string → `Repository` → the real `LeastWatchedItem` → JSON, asserting `Kind` and
+  then the serialized `"LastPlayed":"2026-03-04T11:30:00Z"`. G2 records the pre-fix
+  wire format for contrast and G3 that the floor is now anchored the same way. Run
+  against the **pre-fix** assembly (`GRAVEYARD_DLL=…`) it fails exactly B3b
+  (`Unspecified`) and G1 (no `Z`) and passes the other 25 — so the two probes test
+  the fix and nothing else.
+- `tests/harness/dashboard/dates.test.mjs` (6 checks): drives the real
+  `renderMediaTable` with both strings and shows the cost in the cell — 3 March
+  against 4 March for one instant. It re-execs itself under
+  `TZ=America/Los_Angeles`, because on a UTC machine the whole bug is invisible and
+  the test would pass vacuously.
+
+**Related, unresolved:** `DateAdded` is `item.DateCreated` straight from Jellyfin,
+whose `Kind` this environment cannot observe. If it is `Unspecified`, the same
+skew applies to the "Summoned" column and to the dashboard's `DateAdded <
+HistoryFloorUtc` row marker, which compares it against a value that *does* carry
+`Z`. Not guessed at here: normalizing it would be a behaviour change on a value the
+plugin does not own, and being wrong about the direction would shift every date on
+the page. Phase 6, with a test that can observe it.
 
 ### Phase 6 — Build & release
 

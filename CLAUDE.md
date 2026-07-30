@@ -11,13 +11,24 @@ commit `71a01f7` — 23 findings with `file:line` refs, two locked decisions (D1
 Morgue definition, D2 play threshold), and eight phases with done-when criteria.
 Do not re-derive the findings or re-litigate D1/D2.
 
-Current position: **Phases 0-5 done. Phase 6 is next.** Phases
-run in order. Results and evidence for each finished phase are recorded in
-`PLAN.md` under a "Phase N results" heading — read those before reopening a
-finding.
+Current position: **Phases 0-5 done, including the Phase 5 addendum. Phase 6 is
+next** — items 21-25: csproj cleanup, `buiild.yaml` → `build.yaml`, a portable
+`release.sh` that patches `manifest.json`, GitHub Actions, the first real xUnit
+project, and untracking the committed `Releases/*.dll` / `.DS_Store` /
+`.idea/workspace.xml`. Phases run in order. Results and evidence for each finished
+phase are recorded in `PLAN.md` under a "Phase N results" heading — read those
+before reopening a finding.
+
+Two things Phase 6 inherits, both written up in `PLAN.md`: **finding 30's
+unresolved half** (`DateAdded` comes straight from Jellyfin and its `DateTimeKind`
+cannot be observed here — do not normalize it on a guess) and the note that
+`PlaybackDatabaseExists` is `File.Exists` only, so a database without the
+`PlaybackActivity` table still gives a 500 rather than the actionable 400.
 
 Some findings changed on contact with reality. **Finding 3 belonged to no phase**
-and was fixed in Phase 5, since item 19 rewrote the same lines.
+and was fixed in Phase 5, since item 19 rewrote the same lines. **Finding 30 was
+fixed in the Phase 5 addendum**, at two sites — the review found the local one, and
+the Tracearr engine had the same bug in the other direction.
 **Finding 5's webhook auth bypass was struck in Phase 0** (empty query values bind to `null`, so the endpoint
 failed closed); the rest of finding 5 was real and is fixed. **D1's grace clamp
 was replaced by a floor gate** (decided 2026-07-30) after the clamp turned out to
@@ -41,11 +52,17 @@ store it in the repo.
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
 installed, so the plugin can be built but **not loaded** here. Runtime claims
 were verified with the harnesses in `tests/harness/` — jsdom driving the real
-`dashboard.html`, reflection over the built assembly, and an ASP.NET Core app
-mirroring the webhook. Read `tests/harness/README.md` before trusting or
-extending them: they are evidence for `PLAN.md` findings, not a test suite, and
-the webhook probes are a *mirror* of controller logic that must be updated
-alongside it. Phase 6 still adds the real xUnit project.
+`dashboard.html`, reflection over the built assembly, the real `Repository` over a
+real SQLite file, the real service registrator in a real DI container, and an
+ASP.NET Core app mirroring the webhook. Read `tests/harness/README.md` before
+trusting or extending them: they are evidence for `PLAN.md` findings, not a test
+suite, and the webhook probes are a *mirror* of controller logic that must be
+updated alongside it. Phase 6 still adds the real xUnit project — and the harnesses
+are where to look first for what it should assert.
+
+Current expected results, so a regression is obvious: dashboard `xss` 31, `actions`
+17, `dates` 6; dotnet `repository` 27, `di` 19, `ttlcache` 12, `visitormap` 21;
+`formatbytes` and `probes` print tables rather than counts.
 
 The `Jellyfin.Controller` / `Jellyfin.Model` references are **pinned to
 10.11.6**. Do not restore the floating `10.11.*-*`: it resolves to 10.11.11,
@@ -72,6 +89,11 @@ test project and no CI yet — both are Phase 6.
   `GraveyardServiceRegistrator`. `Plugin.Instance` is read in exactly one place,
   `PluginConfigurationSource`; take `IPluginConfigurationSource` instead of adding
   a second reader, and read `.Current` per use so a saved setting takes effect.
+- Any timestamp crossing the wire must be `DateTimeKind.Utc` (finding 30). Parse
+  stored and third-party strings through the existing helpers —
+  `Repository.TryParseStoredUtc`, `TracearrService.TryParseUtc` — never a bare
+  `DateTime.TryParse`: it yields `Unspecified` for a zoneless string and `Local` for
+  one with an offset, and both serialize into a date the browser reads wrongly.
 - `[Chapel]` is the tag marking condemned items; the paired public collection is
   `"Leaving Soon: The Chapel"`.
 - Release flow is `release.sh vX.X.X.X`, then hand-edit `manifest.json`
