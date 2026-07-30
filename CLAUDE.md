@@ -25,6 +25,10 @@ admit *more* unverifiable items the less history existed — see "D1 — RESOLVE
 Tracearr server; **26 is open and blocks recommending the Tracearr engine for the
 Morgue.**
 
+`test-release.sh` at the repo root is **intentionally untracked** — it predates
+this work. Do not `git add -A`; stage named paths (it has been swept into a commit
+twice that way and removed again).
+
 A live Tracearr is reachable at `http://10.10.1.201:3000` (public API under
 `/api/v1/public`, Bearer key). Ask the user for a key when one is needed — do not
 store it in the repo.

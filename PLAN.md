@@ -346,7 +346,48 @@ signature finding 1 predicted.
   a bogus key (→ "reachable but rejected the API key"), while `system/status`
   returns **404** with or without a key (→ `UnexpectedResponse`), which is why
   the old test could never report success.
-- **Item 7 blocked on a key.** Normalizing `GetVisitorHistoryAsync` into
+##### Tracearr live payload reference *(measured 2026-07-30, so item 7 needs no re-probing)*
+
+`GET {TracearrUrl}/api/v1/public/history?weeksBack=1&page=1`, header
+`Authorization: Bearer <trr_pub_...>`. Ask the user for a key; it is not stored.
+
+```
+meta : {"total": 847, "page": 1, "pageSize": 25}      <- no totalPages field
+```
+
+`pageSize` is honoured and accepts at least **100**; 500 and 1000 return
+something unparseable, so the ceiling sits between. See finding 26 — the volume
+here is the problem, not the shape.
+
+Row fields relevant to mapping (the guesses in the existing code were all
+**correct**, with one type surprise):
+
+| field | example | note |
+| --- | --- | --- |
+| `user` | `{id, username, thumbUrl, avatarUrl}` | `username` → `Visitor` / leaderboard key |
+| `mediaTitle` | `"The Conjugal Conjecture"` | episode title |
+| `showTitle` | `"The Big Bang Theory"` | null for movies |
+| `mediaType` | `"episode"` | lowercase; `"movie"` also occurs |
+| `thumbPath` | `"/Items/426b0f74a4a4f19e65783d9e7b5ff4ea/Images/Primary"` | `Split('/')[2]` is the **dash-less** Jellyfin id — exactly the `ToString("N")` form the aggregates key on |
+| `startedAt` / `stoppedAt` | `"2026-07-29T22:33:30.278Z"` | ISO 8601 UTC |
+| `durationMs` | `689932` | **number** |
+| `progressMs` | `"674554"` | **string** |
+| `totalDurationMs` | `"1312416"` | **string** |
+| `watched` | `false` | bool |
+| `isTranscode` | `false` | bool |
+| `videoDecision` | `"directplay"` | lowercase |
+| `device` / `player` / `product` / `platform` | `"Android TV"` / `"Living Room TV"` | `device`+`player` fill the Vessel cell |
+| `state` | `"stopped"` | |
+
+The two `*Ms` strings are why any C# mapping must tolerate string-or-number
+rather than calling `GetInt64()` directly; the dashboard already `parseInt`s them.
+
+For **Ghosts**, the local path derives them from Jellyfin's user list. Tracearr
+has its own `users` endpoint (200 with a key), so decide whether ghosts come from
+Jellyfin users minus active Tracearr usernames — the two namespaces need not
+match — or from Tracearr's own user list. Unresolved.
+
+- **Item 7 still open** (no longer blocked — the shapes above are what it needed). Normalizing `GetVisitorHistoryAsync` into
   `VisitorResponse` means mapping real field names into `Sessions` /
   `Leaderboard` / `Ghosts`, and the current code's field guesses
   (`user.username`, `startedAt`, `durationMs`, `videoDecision`, `isTranscode`,
