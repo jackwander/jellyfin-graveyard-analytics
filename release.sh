@@ -1,42 +1,212 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# Cuts a release: stamps the version everywhere it is written down, publishes, zips the
+# two shipped assemblies, and patches manifest.json with the real checksum and timestamp.
+#
+#   ./release.sh v1.2.0.0 --changelog "What changed."
+#
+# What this replaces. The old script published, zipped, printed an MD5 and stopped —
+# manifest.json was then edited by hand, which is two fields (checksum, timestamp) that
+# nothing verifies and that silently break every install when they are wrong. It also
+# called `md5 -q`, which is BSD-only, so it did not run on Linux or in CI.
+#
+# The version lives in three files and Jellyfin reads two of them independently: the
+# assembly version (from the csproj) is what the Plugins page shows, and manifest.json is
+# what the catalogue offers. They have disagreed before. This script writes all three from
+# one argument so they cannot.
 
-# Check if a version argument was provided
-if [ -z "$1" ]; then
-  echo "Usage: ./release.sh vX.X.X.X"
+set -euo pipefail
+
+usage() {
+  cat >&2 <<'EOF'
+Usage: ./release.sh vX.X.X.X [--changelog "text"] [--dry-run]
+
+  vX.X.X.X     Four-part version. The leading v is optional and is stripped for
+               the version fields; it is kept for the Releases/ directory and the
+               git tag the sourceUrl points at.
+  --changelog  Release notes for manifest.json. If omitted and this version is
+               already in the manifest, its existing changelog is kept.
+  --dry-run    Build, zip and compute the checksum, but leave manifest.json,
+               the csproj and build.yaml untouched.
+EOF
   exit 1
-fi
+}
 
-VERSION=$1
-SOURCE_DIR="JellyfinGraveyardAnalytics/bin/Release/net9.0/publish"
-DEST_DIR="Releases/$VERSION"
-ZIP_NAME="JellyfinGraveyardAnalytics.zip"
+# Resolve the repo root from this script, not from the caller's working directory —
+# the old script assumed it was invoked from the root and cd'd around relative to that.
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$REPO_ROOT"
 
-mkdir -p "$DEST_DIR"
+PROJECT_DIR="JellyfinGraveyardAnalytics"
+CSPROJ="$PROJECT_DIR/JellyfinGraveyardAnalyticsPlugin.csproj"
+BUILD_YAML="$PROJECT_DIR/build.yaml"
+MANIFEST="manifest.json"
+PUBLISH_DIR="$PROJECT_DIR/bin/Release/net9.0/publish"
+REPO_URL="https://github.com/jackwander/jellyfin-graveyard-analytics"
 
-echo "📦 Preparing release $VERSION..."
-cd "JellyfinGraveyardAnalytics" && dotnet publish -c Release && cd ../
-
+# Kept in step with build.yaml's artifacts list. Microsoft.Data.Sqlite is not here on
+# purpose: the csproj compiles against it with ExcludeAssets="runtime" because Jellyfin
+# already has it loaded, and a second copy is how you get a native-provider clash.
 FILES=("Dapper.dll" "JellyfinGraveyardAnalyticsPlugin.dll")
 
-for FILE in "${FILES[@]}"; do
-  if [ -f "$SOURCE_DIR/$FILE" ]; then
-    cp "$SOURCE_DIR/$FILE" "$DEST_DIR/"
-    echo "✅ Copied $FILE to $DEST_DIR"
-  else
-    echo "❌ ERROR: $FILE not found in $SOURCE_DIR. Did you run 'dotnet publish -c Release'?"
-    exit 1
-  fi
+RAW_VERSION="${1:-}"
+[ -n "$RAW_VERSION" ] || usage
+shift
+
+CHANGELOG=""
+CHANGELOG_SET=0
+DRY_RUN=0
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --changelog)
+      [ $# -ge 2 ] || { echo "❌ --changelog needs a value." >&2; usage; }
+      CHANGELOG="$2"
+      CHANGELOG_SET=1
+      shift 2
+      ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    *) echo "❌ Unknown argument: $1" >&2; usage ;;
+  esac
 done
 
-echo "🗜️  Zipping assets..."
-cd "$DEST_DIR" || exit
-zip -q "$ZIP_NAME" "${FILES[@]}"
+# --- version ---------------------------------------------------------------------
+VERSION="${RAW_VERSION#v}"
+if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "❌ '$RAW_VERSION' is not a four-part version. Jellyfin's manifest requires X.X.X.X." >&2
+  exit 1
+fi
+TAG="v$VERSION"
 
-echo "🔐 Calculating MD5 Checksum..."
-CHECKSUM=$(md5 -q "$ZIP_NAME")
+command -v jq >/dev/null 2>&1 || {
+  echo "❌ jq is required to patch $MANIFEST. Install it (brew install jq / apt install jq)." >&2
+  exit 1
+}
 
+# --- checksum, portably ----------------------------------------------------------
+# GNU coreutils has md5sum, BSD/macOS has md5 -q. The old script only knew the second.
+md5_of() {
+  if command -v md5sum >/dev/null 2>&1; then
+    md5sum "$1" | cut -d' ' -f1
+  elif command -v md5 >/dev/null 2>&1; then
+    md5 -q "$1"
+  else
+    echo "❌ Neither md5sum nor md5 is available; cannot checksum the release." >&2
+    exit 1
+  fi
+}
+
+# targetAbi is the Jellyfin the plugin is actually compiled against, read from the pinned
+# package rather than typed again. It was hardcoded, and the csproj pin has moved before.
+ABI_SHORT="$(grep -o 'Include="Jellyfin.Controller" Version="[^"]*"' "$CSPROJ" \
+  | head -1 | sed 's/.*Version="\([^"]*\)".*/\1/')"
+if [ -z "$ABI_SHORT" ]; then
+  echo "❌ Could not read the Jellyfin.Controller version out of $CSPROJ." >&2
+  exit 1
+fi
+# 10.11.6 -> 10.11.6.0; a version already four-part is left alone.
+case "$(printf '%s' "$ABI_SHORT" | tr -cd '.' | wc -c | tr -d ' ')" in
+  2) TARGET_ABI="$ABI_SHORT.0" ;;
+  3) TARGET_ABI="$ABI_SHORT" ;;
+  *) echo "❌ Unexpected Jellyfin.Controller version '$ABI_SHORT'." >&2; exit 1 ;;
+esac
+
+echo "📦 Release $TAG  (targetAbi $TARGET_ABI)"
+[ "$DRY_RUN" -eq 1 ] && echo "   dry run — no files will be rewritten"
+
+# --- stamp the version -----------------------------------------------------------
+if [ "$DRY_RUN" -eq 0 ]; then
+  # perl rather than sed -i: the -i flag takes an argument on BSD and does not on GNU,
+  # which is the same portability trap the md5 call fell into.
+  perl -pi -e "s|<Version>[^<]*</Version>|<Version>$VERSION</Version>|" "$CSPROJ"
+  perl -pi -e "s|<AssemblyVersion>[^<]*</AssemblyVersion>|<AssemblyVersion>$VERSION</AssemblyVersion>|" "$CSPROJ"
+  perl -pi -e "s|<FileVersion>[^<]*</FileVersion>|<FileVersion>$VERSION</FileVersion>|" "$CSPROJ"
+  perl -pi -e "s|^version: \".*\"|version: \"$VERSION\"|" "$BUILD_YAML"
+  echo "✅ Stamped $VERSION into $CSPROJ and $BUILD_YAML"
+fi
+
+# --- build -----------------------------------------------------------------------
+# Warnings as errors here too, so a release cannot be cut from a tree CI would reject.
+echo "🔨 Publishing..."
+dotnet publish "$CSPROJ" -c Release -p:TreatWarningsAsErrors=true
+
+DEST_DIR="Releases/$TAG"
+ZIP_NAME="JellyfinGraveyardAnalytics.zip"
+mkdir -p "$DEST_DIR"
+rm -f "$DEST_DIR/$ZIP_NAME"
+
+for FILE in "${FILES[@]}"; do
+  if [ ! -f "$PUBLISH_DIR/$FILE" ]; then
+    echo "❌ $FILE is missing from $PUBLISH_DIR — the publish did not produce what build.yaml promises." >&2
+    exit 1
+  fi
+  cp "$PUBLISH_DIR/$FILE" "$DEST_DIR/"
+  echo "✅ Staged $FILE"
+done
+
+echo "🗜️  Zipping..."
+( cd "$DEST_DIR" && zip -q "$ZIP_NAME" "${FILES[@]}" )
+
+CHECKSUM="$(md5_of "$DEST_DIR/$ZIP_NAME")"
+# -u so the stamp is UTC and not the releaser's timezone; both date implementations
+# accept this spelling.
+TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+echo "🔐 md5 $CHECKSUM"
+
+if [ "$DRY_RUN" -eq 1 ]; then
+  echo "---"
+  echo "🎉 Dry run complete. $DEST_DIR/$ZIP_NAME built; $MANIFEST untouched."
+  exit 0
+fi
+
+# --- patch the manifest ----------------------------------------------------------
+# Re-releasing the same version replaces its entry rather than adding a second one, so
+# the script is safe to re-run after a failed upload.
+if [ "$CHANGELOG_SET" -eq 0 ]; then
+  CHANGELOG="$(jq -r --arg v "$VERSION" \
+    'first(.[0].versions[] | select(.version == $v) | .changelog) // ""' "$MANIFEST")"
+  if [ -z "$CHANGELOG" ]; then
+    echo "⚠️  No --changelog given and $VERSION is new; writing a placeholder." >&2
+    CHANGELOG="Release $VERSION."
+  fi
+fi
+
+TMP_MANIFEST="$(mktemp)"
+trap 'rm -f "$TMP_MANIFEST"' EXIT
+
+jq --indent 2 \
+  --arg v "$VERSION" \
+  --arg log "$CHANGELOG" \
+  --arg abi "$TARGET_ABI" \
+  --arg url "$REPO_URL/releases/download/$TAG/$ZIP_NAME" \
+  --arg sum "$CHECKSUM" \
+  --arg ts "$TIMESTAMP" \
+  '.[0].versions |= ([{
+      version: $v,
+      changelog: $log,
+      targetAbi: $abi,
+      sourceUrl: $url,
+      checksum: $sum,
+      timestamp: $ts
+    }] + map(select(.version != $v)))' \
+  "$MANIFEST" > "$TMP_MANIFEST"
+
+# jq exits non-zero on a parse error and set -e would have caught it, but an empty
+# result would still truncate the manifest — check before overwriting.
+[ -s "$TMP_MANIFEST" ] || { echo "❌ Refusing to write an empty $MANIFEST." >&2; exit 1; }
+mv "$TMP_MANIFEST" "$MANIFEST"
+trap - EXIT
+
+echo "✅ Patched $MANIFEST (checksum + timestamp $TIMESTAMP)"
 echo "---"
-echo "🎉 Release $VERSION is ready!"
-echo "📍 Location: $DEST_DIR/$ZIP_NAME"
-echo "📝 Checksum for manifest.json: $CHECKSUM"
+echo "🎉 $TAG is ready."
+echo "📍 $DEST_DIR/$ZIP_NAME"
+echo ""
+echo "Next:"
+echo "  git add $CSPROJ $BUILD_YAML $MANIFEST"
+echo "  git commit -m \"Release $TAG\""
+echo "  git tag $TAG && git push --tags"
+echo "  Upload $DEST_DIR/$ZIP_NAME to the $TAG release — the sourceUrl in the"
+echo "  manifest already points at it, so the checksum only matches that file."
 echo "---"

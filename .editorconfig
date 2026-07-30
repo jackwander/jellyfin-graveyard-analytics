@@ -1,0 +1,72 @@
+# Graveyard Analytics — editor and analyzer settings.
+#
+# Two jobs. The formatting section is what an editor reads; the analyzer section is
+# what the build reads, and CI builds with warnings as errors, so anything left at
+# `warning` below has to be zero before a push lands.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+trim_trailing_whitespace = true
+
+[*.{yml,yaml,json,md}]
+indent_size = 2
+
+[*.{html,js,mjs}]
+indent_size = 4
+
+[*.sh]
+indent_size = 2
+
+[*.cs]
+indent_size = 4
+
+# --- style ---------------------------------------------------------------
+csharp_new_line_before_open_brace = all
+csharp_prefer_braces = true:suggestion
+csharp_style_var_for_built_in_types = false:silent
+csharp_style_var_when_type_is_apparent = true:silent
+dotnet_sort_system_directives_first = true
+dotnet_style_qualification_for_field = false:suggestion
+dotnet_style_qualification_for_method = false:suggestion
+dotnet_style_qualification_for_property = false:suggestion
+
+# --- analyzers -----------------------------------------------------------
+# AnalysisMode is `Recommended` in the csproj. Everything it raises is fixed except
+# the two below, which are suppressed deliberately rather than left to be scrolled
+# past — a warning nobody can clear is a warning nobody reads.
+
+# CA1848 — "use LoggerMessage delegates instead of ILogger.LogX".
+# A source-generated delegate per call site, ~31 of them, to save an allocation on
+# paths that are already doing SQLite queries and HTTP round trips. The logging
+# surface is small and readable as it is; converting it would be a large diff whose
+# only payoff is throughput this plugin does not need. Revisit if a hot path ever
+# logs per item.
+dotnet_diagnostic.CA1848.severity = none
+
+# CA1873 — "this log argument may be expensive to evaluate if logging is disabled".
+# Same family, same reasoning: the arguments here are enum values and item ids.
+dotnet_diagnostic.CA1873.severity = none
+
+# The ones that are about correctness rather than throughput are load-bearing, and
+# are listed so a future AnalysisMode change cannot quietly drop them. CA1305/CA1310
+# are how finding 30 got in: an ambient-culture parse or comparison reads differently
+# on the operator's machine than on the developer's.
+dotnet_diagnostic.CA1305.severity = warning
+dotnet_diagnostic.CA1310.severity = warning
+dotnet_diagnostic.CA1806.severity = warning
+dotnet_diagnostic.CA2007.severity = none
+
+# Test and harness projects: these assert against behaviour, not style, and several
+# deliberately construct the wrong thing to prove it is caught.
+[tests/**/*.cs]
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA1861.severity = none
+dotnet_diagnostic.CA1707.severity = none
+# CA1852 "can be sealed" — the DispatchProxy stubs cannot be: DispatchProxy.Create
+# generates a subclass at runtime and throws "the base type cannot be sealed".
+dotnet_diagnostic.CA1852.severity = none

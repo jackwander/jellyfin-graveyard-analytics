@@ -38,7 +38,7 @@ namespace JellyfinGraveyardAnalytics.Services
     /// be the singleton while the provider is scoped, and separately because the caching
     /// behaviour is then testable on its own — it depends on nothing but a clock.
     /// </remarks>
-    public sealed class TtlCache<T>
+    public sealed class TtlCache<T> : IDisposable
         where T : class
     {
         private readonly TimeSpan _lifetime;
@@ -125,6 +125,14 @@ namespace JellyfinGraveyardAnalytics.Services
             value = default!;
             return false;
         }
+
+        /// <summary>
+        /// Releases the loader gate. Registered as a singleton, so in practice this runs once
+        /// when Jellyfin tears the container down; it exists because the type owns a
+        /// <see cref="SemaphoreSlim"/> and a type that owns one and cannot be disposed is a
+        /// handle leak waiting for a second registration site.
+        /// </summary>
+        public void Dispose() => _gate.Dispose();
     }
 
     /// <summary>

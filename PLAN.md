@@ -1031,6 +1031,127 @@ the page. Phase 6, with a test that can observe it.
     Embed the two Chapel PNGs as resources, removing the runtime GitHub
     dependency.
 
+#### Phase 6 results — **complete (2026-07-30)**
+
+Clean build, 0 warnings, 0 errors, **with `TreatWarningsAsErrors`**. New suite
+`tests/GraveyardAnalytics.Tests`: **85 tests**, all passing. Every pre-existing
+harness still at its documented count — dashboard `xss` 31, `actions` 17, `dates`
+6; dotnet `repository` 27, `di` 19, `ttlcache` 12, `visitormap` 21.
+
+- **Item 21 done.** `Microsoft.AspNetCore.Mvc.Core 2.2.5` dropped — EOL, and
+  `Jellyfin.Controller` brings the framework reference, so the build is unchanged
+  without it. `Version` / `AssemblyVersion` / `FileVersion` added (Jellyfin reads
+  the assembly version for the Plugins page, and with none it showed 1.0.0.0
+  whatever the release was called). `.editorconfig` added, `EnableNETAnalyzers`
+  with `AnalysisMode=Recommended` turned on.
+  - The analyzers raised **31 CA1848 + 5 CA1873** (LoggerMessage delegates) and
+    **9 others**. The 36 logging-throughput warnings are suppressed in
+    `.editorconfig` with the reasoning written down; a warning nobody can clear is
+    a warning nobody reads. All 9 others are **fixed**, and three of them were
+    real:
+    - `TracearrService:465` compared a path prefix with a culture-sensitive
+      `StartsWith` (CA1310).
+    - `AnalyticsService:670` — **a third site of finding 30**, which Phase 5
+      missed. The Guestbook's `Time` was built from a bare
+      `DateTime.TryParse(row.DateCreated, …)` **whose result was never checked**,
+      so an unreadable row silently became `DateTime.MinValue` and printed as a
+      year-0001 session. Now goes through `Repository.TryParseStoredUtc` (promoted
+      `private` → `public` for it) and prints `"Unknown"` on a failed parse. The
+      display remains server-local, which is pre-existing and deliberate — the
+      field is a formatted string, not a `DateTime` on the wire.
+    - `TtlCache<T>` owned a `SemaphoreSlim` and was not disposable (CA1001); it
+      implements `IDisposable` now.
+  - The rest were mechanical: `Any()` → `Count > 0` ×3, `ContainsKey` + indexer →
+    `TryGetValue`, `BuildMediaQuery` → `static`, and the duplicated Chapel
+    collection lookup extracted to `FindChapelCollection()` — which also removed
+    the third and fourth copies of the `"Leaving Soon: The Chapel"` literal.
+- **Item 22 done.** `buiild.yaml` → `build.yaml` (`git mv`), and `artifacts`
+  corrected from the pre-1.0 `JellyfinAnalyticsPlugin.dll` to
+  `JellyfinGraveyardAnalyticsPlugin.dll`. Worth stating plainly: because the
+  filename was misspelled, **jprm had never read this file**, which is how the
+  stale artifact name survived a rename.
+- **Item 23 done.** `release.sh` rewritten. Portable checksum
+  (`md5sum || md5 -q` — the old one was BSD-only, so it could not run on Linux or
+  in CI). Resolves the repo root from `BASH_SOURCE` instead of assuming the
+  caller's directory. Stamps the version into the csproj *and* `build.yaml`,
+  publishes with warnings as errors, zips, and patches `manifest.json` with the
+  real MD5 and a UTC timestamp — replacing a hand-edit of two fields that nothing
+  verified and that break every install when wrong. `targetAbi` is derived from
+  the pinned `Jellyfin.Controller` version rather than retyped. Re-running the
+  same version **replaces** its manifest entry rather than appending a second.
+  `--dry-run` verified: builds and checksums, leaves all three files untouched.
+- **Item 24 done.** Two workflows and the suite.
+  - `.github/workflows/build.yml` — restore, build and test with
+    `TreatWarningsAsErrors`, then the three dashboard harnesses in jsdom, then
+    publish, then a **shipped-set check** asserting the publish directory contains
+    the two files `build.yaml` promises and *no* SQLite runtime assets.
+  - That check earned its place immediately: `ExcludeAssets="runtime"` on
+    `Microsoft.Data.Sqlite` drops the managed assemblies but **leaves the `native`
+    RID assets**, so a clean publish still emitted a `runtimes/` tree carrying
+    `e_sqlite3` for twenty platforms. Now `ExcludeAssets="runtime;native"`.
+  - `.github/workflows/release.yml` — on a `v*` tag: checks the tag agrees with
+    the csproj and `build.yaml` (a disagreement means the plugin installs and then
+    reports the wrong version forever), tests, publishes, zips, checks the MD5
+    against the committed `manifest.json` entry, and attaches the zip. It
+    deliberately does **not** patch the manifest: that file is served from master
+    and is what installed clients poll, so a release must not announce itself
+    before the artifact is confirmed.
+  - **The suite: 85 tests.** `FormatBytesTests` (finding 6),
+    `PlayThresholdTests` (D2, over a real SQLite file — all four aggregates, the
+    boundary, and that a false-start-only item drops out of the dictionaries
+    entirely rather than appearing as a zero), `MorgueFloorGateTests` (D1, driving
+    the real `GetLeastWatchedItems` against a `DispatchProxy` `ILibraryManager`),
+    `ConfigurationTests` (the three clamps and the zero-means-unset upgrade path),
+    `StoredTimestampTests` (finding 30, ending on the serialized JSON rather than
+    the object), `TtlCacheTests`, `EmbeddedResourceTests`.
+  - **Non-vacuity checked by mutation**, not asserted: shrinking the suffix array
+    back to `{B…TB}` fails exactly 4 `FormatBytes` tests; removing the
+    `!IsUnverifiable` filter fails exactly the 2 floor-gate withholding tests;
+    changing the threshold SQL's `>=` to `>` fails exactly the boundary test.
+  - One test's claim was **weaker than written and is now documented as such**:
+    with seven suffixes, `FormatBytes`'s `order < suffixes.Length - 1` guard is
+    unreachable for any `long` (`long.MaxValue` divides down to 8 first), so
+    removing the guard passes every test. What fixed finding 6 was extending the
+    array. The guard test is a regression net for a future *shortening*, and says so.
+- **Item 25 done.** The four `Releases/*.dll` untracked; `.gitignore` rewritten
+  (`bin/`, `obj/` at any depth — the old list only named the plugin's — plus
+  `/Releases/`, editors, `node_modules/`, test output). README build instructions
+  corrected: they said to run `dotnet publish` in the repo root, which has no
+  project and fails with `MSB1003`; they now name the two files to copy and warn
+  against copying SQLite. Release and test sections added.
+  - **Two of item 25's targets did not exist.** `.DS_Store` and
+    `.idea/workspace.xml` were already untracked and ignored — only the four DLLs
+    were in the index.
+  - **The Chapel artwork is embedded**, and the runtime fetch from
+    `raw.githubusercontent.com` at `GraveyardAnalyticsController.cs:249,280` is
+    gone with it, along with the now-unused `IHttpClientFactory` constructor
+    dependency. **Converted PNG → JPEG q80 first**: the two PNGs are 3.0 MB and
+    2.7 MB, and embedding 5.7 MB into an assembly every user downloads on every
+    update, for artwork Jellyfin re-encodes into its own cache anyway, is a worse
+    trade than the network dependency was. At q80 they are 552 KB and 449 KB —
+    the plugin DLL goes from 89 KB to 1.1 MB and the release zip to ~1.2 MB. The
+    source PNGs in `images/` are untouched; the JPEGs live in
+    `JellyfinGraveyardAnalytics/Resources/`. This is a **deliberate deviation**
+    from the item as written ("embed the two Chapel PNGs"), recorded here because
+    it is a lossy change to a shipped asset.
+
+**What Phase 6 inherited and did not resolve.**
+
+- **Finding 30's `DateAdded` half is still open**, unchanged: it comes straight
+  from Jellyfin as `item.DateCreated`, and this environment still cannot observe
+  its `DateTimeKind` — no Jellyfin server, and the suite constructs `Movie`
+  objects itself, so the `Kind` it sees is the one the test wrote. The suite
+  therefore *cannot* settle this either, which is worth saying because item 24
+  proposed "a test that can observe it". It needs a running server.
+- **`PlaybackDatabaseExists` is still `File.Exists` only.** A database present but
+  missing the `PlaybackActivity` table still gives a 500 rather than the
+  actionable 400. `PlayThresholdTests` covers the *missing file* case and the
+  *empty table* case; the *missing table* case is untested and unfixed.
+- The csproj pin stays at `Jellyfin.Controller` **10.11.6**. Item 21 said Phase 6
+  would decide whether to move; the decision is **no** — 10.11.11 removed
+  `IUserManager.Users`, which `AnalyticsService.cs:429` uses, so moving is a code
+  change and not a build one. Deferred with the pin's comment updated to say so.
+
 ### Phase 7 *(optional)* — Dashboard rewrite
 
 26. Extract inline styles into the existing `<style>` block as classes; replace

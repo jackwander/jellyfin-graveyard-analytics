@@ -1,6 +1,28 @@
-/JellyfinGraveyardAnalytics/.idea
-/JellyfinGraveyardAnalytics/bin
-/JellyfinGraveyardAnalytics/obj
-/.idea
-/.DS_Store
-*/.DS_Store
+# --- build output ---------------------------------------------------------
+# Any project, at any depth: the plugin, the test project and the tests/harness
+# projects all produce these, and the old list only named the plugin's.
+bin/
+obj/
+
+# --- release artifacts ----------------------------------------------------
+# release.sh writes here, and the built DLLs used to be committed — 4 binaries that
+# went stale under their pre-1.0 name (JellyfinAnalyticsPlugin.dll) while the build
+# had long since renamed the assembly. The published artifact is the GitHub release;
+# this directory is just where it is staged.
+/Releases/
+
+# --- editors and OS -------------------------------------------------------
+.idea/
+.vs/
+.vscode/
+*.user
+*.suo
+.DS_Store
+
+# --- node (tests/harness/dashboard) ---------------------------------------
+node_modules/
+
+# --- test output ----------------------------------------------------------
+TestResults/
+*.trx
+[Cc]overage*/

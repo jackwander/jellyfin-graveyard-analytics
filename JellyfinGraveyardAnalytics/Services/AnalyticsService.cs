@@ -197,7 +197,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     }
                     uniqueUsers = seriesUsers.Count;
 
-                    if (episodeDates.Any())
+                    if (episodeDates.Count > 0)
                     {
                         lastPlayed = episodeDates.Max();
                     }
@@ -277,7 +277,7 @@ namespace JellyfinGraveyardAnalytics.Services
         /// One query shape for all three media views, so they can no longer disagree about
         /// what the library contains.
         /// </summary>
-        private MediaBrowser.Controller.Entities.InternalItemsQuery BuildMediaQuery(
+        private static MediaBrowser.Controller.Entities.InternalItemsQuery BuildMediaQuery(
             string mediaType, string? mediaSearch, bool chapelOnly)
         {
             var kinds = new List<Jellyfin.Data.Enums.BaseItemKind>();
@@ -462,7 +462,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     }
 
                     uniqueUsers = seriesUsers.Count;
-                    if (episodeDates.Any()) lastPlayed = episodeDates.Max();
+                    if (episodeDates.Count > 0) lastPlayed = episodeDates.Max();
                 }
                 else
                 {
@@ -557,7 +557,7 @@ namespace JellyfinGraveyardAnalytics.Services
                         if (lastPlayedDates.TryGetValue(episodeId, out var eDate)) episodeDates.Add(eDate);
                     }
                     uniqueUsers = seriesUsers.Count;
-                    if (episodeDates.Any()) lastPlayed = episodeDates.Max();
+                    if (episodeDates.Count > 0) lastPlayed = episodeDates.Max();
                 }
                 else
                 {
@@ -666,13 +666,22 @@ namespace JellyfinGraveyardAnalytics.Services
                 var ts = System.TimeSpan.FromSeconds(durationSeconds);
                 string formattedDuration = $"{(int)System.Math.Floor(ts.TotalHours):D2}:{ts.Minutes:D2}:{ts.Seconds:D2}";
 
-                System.DateTime rowDate;
-                System.DateTime.TryParse(row.DateCreated, out rowDate);
+                // Same column, same stored format, same helper as the Morgue's Last Breath.
+                // This was a bare DateTime.TryParse whose result was never checked: an
+                // unparseable row silently became DateTime.MinValue and printed as a year-0001
+                // session rather than admitting it could not read the timestamp. The helper
+                // also pins InvariantCulture, so the row is not read through the operator's
+                // locale, and the format provider is pinned for the same reason on the way out.
+                string formattedTime = JellyfinGraveyardAnalytics.Database.Repository
+                    .TryParseStoredUtc(row.DateCreated, out var rowDate)
+                    ? rowDate.ToLocalTime().ToString(
+                        "MMM dd, yyyy - h:mm tt",
+                        System.Globalization.CultureInfo.InvariantCulture)
+                    : "Unknown";
 
                 sessions.Add(new JellyfinGraveyardAnalytics.Models.VisitorSession
                 {
-                    Time = System.DateTime.SpecifyKind(rowDate, System.DateTimeKind.Utc)
-                        .ToLocalTime().ToString("MMM dd, yyyy - h:mm tt"),
+                    Time = formattedTime,
                     Visitor = visitorName,
                     Subject = row.ItemName ?? "Unknown",
                     Type = row.ItemType ?? "Unknown",

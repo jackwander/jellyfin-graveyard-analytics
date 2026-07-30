@@ -11,19 +11,22 @@ commit `71a01f7` — 23 findings with `file:line` refs, two locked decisions (D1
 Morgue definition, D2 play threshold), and eight phases with done-when criteria.
 Do not re-derive the findings or re-litigate D1/D2.
 
-Current position: **Phases 0-5 done, including the Phase 5 addendum. Phase 6 is
-next** — items 21-25: csproj cleanup, `buiild.yaml` → `build.yaml`, a portable
-`release.sh` that patches `manifest.json`, GitHub Actions, the first real xUnit
-project, and untracking the committed `Releases/*.dll` / `.DS_Store` /
-`.idea/workspace.xml`. Phases run in order. Results and evidence for each finished
-phase are recorded in `PLAN.md` under a "Phase N results" heading — read those
-before reopening a finding.
+Current position: **Phases 0-6 done, including the Phase 5 addendum. Only Phase 7
+remains** — the optional dashboard rewrite (item 26). Phases run in order. Results
+and evidence for each finished phase are recorded in `PLAN.md` under a "Phase N
+results" heading — read those before reopening a finding.
 
-Two things Phase 6 inherits, both written up in `PLAN.md`: **finding 30's
-unresolved half** (`DateAdded` comes straight from Jellyfin and its `DateTimeKind`
-cannot be observed here — do not normalize it on a guess) and the note that
-`PlaybackDatabaseExists` is `File.Exists` only, so a database without the
-`PlaybackActivity` table still gives a 500 rather than the actionable 400.
+Three things carried past Phase 6, all written up in "Phase 6 results":
+
+- **Finding 30's `DateAdded` half is still open.** It comes straight from Jellyfin
+  and its `DateTimeKind` cannot be observed here — do not normalize it on a guess.
+  The xUnit suite cannot settle it either: it constructs `Movie` objects itself, so
+  the `Kind` it sees is the one the test wrote. This needs a running server.
+- **`PlaybackDatabaseExists` is `File.Exists` only**, so a database present but
+  missing the `PlaybackActivity` table still gives a 500 rather than the actionable
+  400. The suite covers the missing-file and empty-table cases, not this one.
+- **The `Jellyfin.Controller` pin stays at 10.11.6.** Phase 6 was to decide; the
+  decision is no. See the pin note below.
 
 Some findings changed on contact with reality. **Finding 3 belonged to no phase**
 and was fixed in Phase 5, since item 19 rewrote the same lines. **Finding 30 was
@@ -50,33 +53,52 @@ A live Tracearr is reachable at `http://10.10.1.201:3000` (public API under
 store it in the repo.
 
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
-installed, so the plugin can be built but **not loaded** here. Runtime claims
-were verified with the harnesses in `tests/harness/` — jsdom driving the real
-`dashboard.html`, reflection over the built assembly, the real `Repository` over a
-real SQLite file, the real service registrator in a real DI container, and an
-ASP.NET Core app mirroring the webhook. Read `tests/harness/README.md` before
-trusting or extending them: they are evidence for `PLAN.md` findings, not a test
-suite, and the webhook probes are a *mirror* of controller logic that must be
-updated alongside it. Phase 6 still adds the real xUnit project — and the harnesses
-are where to look first for what it should assert.
+installed, so the plugin can be built but **not loaded** here.
 
-Current expected results, so a regression is obvious: dashboard `xss` 31, `actions`
-17, `dates` 6; dotnet `repository` 27, `di` 19, `ttlcache` 12, `visitormap` 21;
-`formatbytes` and `probes` print tables rather than counts.
+**The test suite is `tests/GraveyardAnalytics.Tests` (85 tests, `net10.0`).** Added
+in Phase 6, run in CI on every push. It covers `FormatBytes`, D2's play threshold
+over a real SQLite file, D1's floor gate through the real `GetLeastWatchedItems`,
+the configuration clamps, finding 30's parse and its serialized form, the
+`TtlCache`, and the embedded Chapel artwork. Its non-vacuity was checked by
+mutating the source, not asserted — if you add to it, do the same.
+
+`tests/harness/` is **separate and still current**: throwaway-grade evidence for
+`PLAN.md` findings, kept because several can be pointed at an *old* assembly
+(`GRAVEYARD_DLL=…`) to prove a check catches the bug it names. Read
+`tests/harness/README.md` before trusting or extending them — the webhook probes
+are a *mirror* of controller logic that must be updated alongside it.
+
+Expected results, so a regression is obvious: suite **85**; dashboard `xss` 31,
+`actions` 17, `dates` 6; dotnet `repository` 27, `di` 19, `ttlcache` 12,
+`visitormap` 21; `formatbytes` and `probes` print tables rather than counts.
 
 The `Jellyfin.Controller` / `Jellyfin.Model` references are **pinned to
 10.11.6**. Do not restore the floating `10.11.*-*`: it resolves to 10.11.11,
 which removed `IUserManager.Users` and breaks the build from a clean checkout
-(`AnalyticsService.cs:429`).
+(`AnalyticsService.cs:429`). Phase 6 considered moving and declined — it is a code
+change, not a build one.
 
-## Build
+## Build and test
 
 ```bash
-cd JellyfinGraveyardAnalytics && dotnet publish -c Release
+dotnet build JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj -c Release
+dotnet test tests/GraveyardAnalytics.Tests
 ```
 
-No `.sln`. Local SDK is dotnet 10.x; the csproj targets `net9.0`. There is no
-test project and no CI yet — both are Phase 6.
+No `.sln`, and the repo root holds no project — `dotnet publish` from the root
+fails with `MSB1003`. Local SDK is dotnet 10.x; the plugin targets `net9.0` and the
+test project targets `net10.0` (only that runtime is installed here).
+
+**CI builds with `-p:TreatWarningsAsErrors=true`, so the tree must stay at zero
+warnings.** Analyzers are on (`AnalysisMode=Recommended`); CA1848 and CA1873
+(LoggerMessage delegates) are suppressed in `.editorconfig` with the reasoning
+written down. Do not suppress anything else without adding a comment saying why.
+
+`.github/workflows/build.yml` also asserts the **shipped set**: the publish
+directory must contain exactly `JellyfinGraveyardAnalyticsPlugin.dll` and
+`Dapper.dll`, and no SQLite runtime assets. `Microsoft.Data.Sqlite` is referenced
+with `ExcludeAssets="runtime;native"` — both, because `runtime` alone still emits
+the native `runtimes/` tree.
 
 ## Conventions
 
@@ -95,6 +117,12 @@ test project and no CI yet — both are Phase 6.
   `DateTime.TryParse`: it yields `Unspecified` for a zoneless string and `Local` for
   one with an offset, and both serialize into a date the browser reads wrongly.
 - `[Chapel]` is the tag marking condemned items; the paired public collection is
-  `"Leaving Soon: The Chapel"`.
-- Release flow is `release.sh vX.X.X.X`, then hand-edit `manifest.json`
-  (checksum + timestamp). Phase 6 automates this.
+  `"Leaving Soon: The Chapel"` — the constant `ChapelCollectionName`, and the
+  lookup is `FindChapelCollection()`. Do not spell either out again. Its artwork is
+  **embedded** (`Resources/*.jpg`); the plugin makes no outbound HTTP of its own.
+- Release flow is `./release.sh vX.X.X.X --changelog "…"`. It stamps the version
+  into the csproj and `build.yaml`, publishes, zips, and patches `manifest.json`
+  (checksum + UTC timestamp) itself — no hand-editing. `--dry-run` builds and
+  checksums without rewriting anything. Then commit, tag, and let
+  `.github/workflows/release.yml` attach the zip; it refuses a tag that disagrees
+  with the csproj or whose checksum does not match the committed manifest.

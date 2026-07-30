@@ -42,11 +42,30 @@ namespace JellyfinGraveyardAnalytics.Controllers
         private const string PlaybackUnavailableMessage =
             "The Playback Reporting plugin database was not found. Install Playback Reporting first.";
 
+        /// <summary>
+        /// The Chapel collection artwork, embedded rather than fetched. These two used to be
+        /// pulled from raw.githubusercontent.com at condemn time, which made the branding
+        /// depend on the server having outbound internet and on the repository still being at
+        /// that path — and it silently produced an unbranded collection when either failed.
+        /// Names are the csproj's <c>EmbeddedResource</c> paths with separators as dots.
+        /// </summary>
+        private const string ChapelThumbnailResource =
+            "JellyfinGraveyardAnalytics.Resources.thechapelcollectionthumbnail.jpg";
+
+        private const string ChapelBackdropResource =
+            "JellyfinGraveyardAnalytics.Resources.thechapelcollectionbackdrop.jpg";
+
+        /// <summary>
+        /// The public collection paired with the <c>[Chapel]</c> tag. Condemn looks it up (and
+        /// creates it), Pardon looks it up to remove from it — spelled out in three places
+        /// before, which is one rename away from the two halves disagreeing.
+        /// </summary>
+        private const string ChapelCollectionName = "Leaving Soon: The Chapel";
+
         private readonly ILibraryManager _libraryManager;
         private readonly ILogger<GraveyardAnalyticsController> _logger;
         private readonly ICollectionManager _collectionManager;
         private readonly IUserManager _userManager;
-        private readonly IHttpClientFactory _httpClientFactory;
         private readonly IProviderManager _providerManager;
         private readonly TracearrService _tracearrService;
         private readonly PlaybackStatsProvider _playbackStats;
@@ -68,7 +87,6 @@ namespace JellyfinGraveyardAnalytics.Controllers
             ILogger<GraveyardAnalyticsController> logger,
             ICollectionManager collectionManager,
             IUserManager userManager,
-            IHttpClientFactory httpClientFactory,
             IProviderManager providerManager)
         {
             _tracearrService = tracearrService;
@@ -76,7 +94,6 @@ namespace JellyfinGraveyardAnalytics.Controllers
             _logger = logger;
             _collectionManager = collectionManager;
             _userManager = userManager;
-            _httpClientFactory = httpClientFactory;
             _providerManager = providerManager;
             _playbackStats = playbackStats;
             _analytics = analytics;
@@ -210,17 +227,13 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     var parentItem = item.ParentId != Guid.Empty ? _libraryManager.GetItemById(item.ParentId) : null;
                     await _libraryManager.UpdateItemAsync(item, parentItem!, MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit, CancellationToken.None);
 
-                    var chapelCollection = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
-                    {
-                        IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.BoxSet },
-                        Name = "Leaving Soon: The Chapel"
-                    }).FirstOrDefault() as MediaBrowser.Controller.Entities.Movies.BoxSet;
+                    var chapelCollection = FindChapelCollection();
 
                     if (chapelCollection == null)
                     {
                         chapelCollection = await _collectionManager.CreateCollectionAsync(new MediaBrowser.Controller.Collections.CollectionCreationOptions
                         {
-                            Name = "Leaving Soon: The Chapel",
+                            Name = ChapelCollectionName,
                             IsLocked = false
                         }).ConfigureAwait(false) as MediaBrowser.Controller.Entities.Movies.BoxSet;
 
@@ -242,64 +255,18 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     // --- IMAGE LOGIC ---
                     if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Primary, 0))
                     {
-                      try
-                      {
-                          using var httpClient = _httpClientFactory.CreateClient();
-
-                          var thumbUrl = "https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollectionthumbnail.png";
-                          using (var response = await httpClient.GetAsync(thumbUrl).ConfigureAwait(false))
-                          {
-                              if (response.IsSuccessStatusCode && response.Content is not null)
-                              {
-                                  using var imageStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                                  await _providerManager.SaveImage(
-                                      chapelCollection!,
-                                      imageStream,
-                                      "image/png",
-                                      MediaBrowser.Model.Entities.ImageType.Primary,
-                                      null,
-                                      CancellationToken.None
-                                  ).ConfigureAwait(false);
-                              }
-                          }
-
-                          _logger.LogInformation("The Chapel has been fully branded with custom iconography.");
-                      }
-                      catch (Exception ex)
-                      {
-                          _logger.LogError(ex, "Failed to apply thematic branding to The Chapel.");
-                      }
+                        await ApplyChapelImageAsync(
+                            chapelCollection,
+                            ChapelThumbnailResource,
+                            MediaBrowser.Model.Entities.ImageType.Primary).ConfigureAwait(false);
                     }
 
                     if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Backdrop, 0))
                     {
-                      try
-                      {
-                          using var httpClient = _httpClientFactory.CreateClient();
-
-                          var backdropUrl = "https://raw.githubusercontent.com/jackwander/jellyfin-graveyard-analytics/master/images/thechapelcollectionbackdrop.png";
-                          using (var response = await httpClient.GetAsync(backdropUrl).ConfigureAwait(false))
-                          {
-                              if (response.IsSuccessStatusCode && response.Content is not null)
-                              {
-                                  using var imageStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
-                                  await _providerManager.SaveImage(
-                                      chapelCollection!,
-                                      imageStream,
-                                      "image/png",
-                                      MediaBrowser.Model.Entities.ImageType.Backdrop,
-                                      null,
-                                      CancellationToken.None
-                                  ).ConfigureAwait(false);
-                              }
-                          }
-
-                          _logger.LogInformation("The Chapel has been fully branded with custom iconography.");
-                      }
-                      catch (Exception ex)
-                      {
-                          _logger.LogError(ex, "Failed to apply thematic branding to The Chapel.");
-                      }
+                        await ApplyChapelImageAsync(
+                            chapelCollection,
+                            ChapelBackdropResource,
+                            MediaBrowser.Model.Entities.ImageType.Backdrop).ConfigureAwait(false);
                     }
 
                     if (chapelCollection != null)
@@ -317,6 +284,65 @@ namespace JellyfinGraveyardAnalytics.Controllers
             {
                 _logger.LogError(ex, "Failed to condemn {ItemId}.", itemId);
                 return StatusCode(500, new { message = GenericFailure });
+            }
+        }
+
+        /// <summary>
+        /// The Chapel collection, or null if it has not been created yet. Both Condemn and
+        /// Pardon need it and each spelled the query out; the query is also indexable, so
+        /// <c>FirstOrDefault()</c> was enumerating a list it could have subscripted.
+        /// </summary>
+        private MediaBrowser.Controller.Entities.Movies.BoxSet? FindChapelCollection()
+        {
+            var matches = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+            {
+                IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.BoxSet },
+                Name = ChapelCollectionName
+            });
+
+            return matches.Count > 0
+                ? matches[0] as MediaBrowser.Controller.Entities.Movies.BoxSet
+                : null;
+        }
+
+        /// <summary>
+        /// Saves one embedded artwork resource onto the Chapel collection. Branding is
+        /// cosmetic, so a failure here is logged and swallowed rather than failing the
+        /// condemn that the admin actually asked for — that was the old behaviour too, and
+        /// it is the reason this is a separate method instead of an inline try/catch pair.
+        /// </summary>
+        private async Task ApplyChapelImageAsync(
+            MediaBrowser.Controller.Entities.Movies.BoxSet collection,
+            string resourceName,
+            MediaBrowser.Model.Entities.ImageType imageType)
+        {
+            try
+            {
+                using var imageStream = typeof(GraveyardAnalyticsController).Assembly
+                    .GetManifestResourceStream(resourceName);
+
+                if (imageStream is null)
+                {
+                    // Only reachable if the csproj stops embedding the file or the resource is
+                    // renamed, so name it: a silent unbranded collection is what this replaced.
+                    _logger.LogError("Chapel artwork {Resource} is missing from the plugin assembly.", resourceName);
+                    return;
+                }
+
+                await _providerManager.SaveImage(
+                    collection,
+                    imageStream,
+                    "image/jpeg",
+                    imageType,
+                    null,
+                    CancellationToken.None
+                ).ConfigureAwait(false);
+
+                _logger.LogInformation("Applied {ImageType} artwork to The Chapel.", imageType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to apply {ImageType} branding to The Chapel.", imageType);
             }
         }
 
@@ -340,11 +366,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     var parentItem = item.ParentId != Guid.Empty ? _libraryManager.GetItemById(item.ParentId) : null;
                     await _libraryManager.UpdateItemAsync(item, parentItem!, MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit, CancellationToken.None);
 
-                    var chapelCollection = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
-                    {
-                        IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.BoxSet },
-                        Name = "Leaving Soon: The Chapel"
-                    }).FirstOrDefault();
+                    var chapelCollection = FindChapelCollection();
 
                     if (chapelCollection != null)
                     {

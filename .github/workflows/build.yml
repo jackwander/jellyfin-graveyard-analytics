@@ -1,0 +1,94 @@
+name: Build
+
+# Every push and every PR. There is no CI history to speak of, so this starts strict:
+# warnings are errors, because the analyzer warnings that were left in the tree are what
+# finding 30 hid behind.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # One SDK, two target frameworks. The .NET 10 SDK builds the plugin's net9.0 target
+      # (it restores the 9.0 reference pack) and runs the net10.0 test host, which is the
+      # same arrangement the development machine has.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: |
+          dotnet restore JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj
+          dotnet restore tests/GraveyardAnalytics.Tests/GraveyardAnalytics.Tests.csproj
+
+      - name: Build plugin
+        run: >
+          dotnet build JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj
+          -c Release --no-restore -p:TreatWarningsAsErrors=true
+
+      - name: Test
+        run: >
+          dotnet test tests/GraveyardAnalytics.Tests/GraveyardAnalytics.Tests.csproj
+          -c Release --no-restore -p:TreatWarningsAsErrors=true
+          --logger "trx;LogFileName=results.trx"
+          --results-directory TestResults
+
+      # The dashboard harnesses exercise the real WebUI/dashboard.html in jsdom. They are not
+      # the unit suite, but they are the only thing that runs the shipped page at all, and
+      # every one of them was written against a specific finding.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Dashboard harnesses
+        working-directory: tests/harness/dashboard
+        run: |
+          npm ci || npm install
+          node xss.test.mjs
+          node actions.test.mjs
+          node dates.test.mjs
+
+      - name: Publish
+        run: >
+          dotnet publish JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj
+          -c Release --no-restore -p:TreatWarningsAsErrors=true
+
+      # The two files a release actually contains, kept in step with build.yaml's artifacts
+      # list. Uploading them means a failed release can be diagnosed from the build that
+      # produced it rather than rebuilt from a tag.
+      - name: Check the shipped set is what build.yaml promises
+        run: |
+          set -euo pipefail
+          publish=JellyfinGraveyardAnalytics/bin/Release/net9.0/publish
+          for file in JellyfinGraveyardAnalyticsPlugin.dll Dapper.dll; do
+            test -f "$publish/$file" || { echo "::error::$file missing from publish output"; exit 1; }
+          done
+          # Jellyfin already has these loaded; a second copy in the plugin directory is a
+          # native-provider clash, and the csproj excludes them for that reason.
+          if [ -e "$publish/Microsoft.Data.Sqlite.dll" ] || [ -e "$publish/runtimes" ]; then
+            echo "::error::SQLite runtime assets are back in the publish output"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plugin
+          path: |
+            JellyfinGraveyardAnalytics/bin/Release/net9.0/publish/JellyfinGraveyardAnalyticsPlugin.dll
+            JellyfinGraveyardAnalytics/bin/Release/net9.0/publish/Dapper.dll
+            TestResults/*.trx
+          if-no-files-found: warn

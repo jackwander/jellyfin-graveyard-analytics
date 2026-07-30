@@ -220,8 +220,12 @@ namespace JellyfinGraveyardAnalytics.Database
         /// because without them the result is <see cref="DateTimeKind.Unspecified"/> — which
         /// serializes with no <c>Z</c>, so a browser reads the instant as its own local time and
         /// the column is a whole day out west of UTC.
+        ///
+        /// Public because <see cref="Services.AnalyticsService"/> reads the same column for the
+        /// Guestbook and had its own bare <c>DateTime.TryParse</c> — a third site of the same
+        /// drift, found by the analyzers in Phase 6.
         /// </remarks>
-        private static bool TryParseStoredUtc(string? value, out DateTime utc)
+        public static bool TryParseStoredUtc(string? value, out DateTime utc)
             => DateTime.TryParse(
                 value,
                 CultureInfo.InvariantCulture,

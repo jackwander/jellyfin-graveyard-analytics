@@ -35,9 +35,17 @@ namespace JellyfinGraveyardAnalytics.Configuration
 
         /// <summary>
         /// How long an item must have been in the library before zero plays means neglect
-        /// rather than "added last week". Clamped at read time to the history actually
-        /// available, so a young Playback Reporting database cannot flood the Morgue.
+        /// rather than "added last week". Applied exactly as configured.
         /// </summary>
+        /// <remarks>
+        /// It used to say it was clamped at read time to the history available, and it was —
+        /// until D1 was resolved on 2026-07-30. That clamp was removed because it worked
+        /// against its own purpose: shrinking the grace period *loosens* the age test, so
+        /// less history admitted more unverifiable items rather than fewer. What keeps a
+        /// young Playback Reporting database from flooding the Morgue is now the floor gate
+        /// in <see cref="Services.AnalyticsService.GetLeastWatchedItems"/> — an item added
+        /// before history begins is withheld unless the caller opts in.
+        /// </remarks>
         public int MorgueGraceDays
         {
             get => _morgueGraceDays;

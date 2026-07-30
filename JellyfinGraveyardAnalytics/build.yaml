@@ -1,0 +1,23 @@
+---
+# Manifest for jellyfin-plugin-repository-manager (jprm). The filename matters: jprm
+# looks for build.yaml, and this was spelled buiild.yaml, so nothing had ever read it —
+# which is how `artifacts` kept naming a DLL the build stopped producing.
+name: "jellyfin-plugin-graveyard-analytics"
+guid: "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21"
+version: "1.1.0.0"
+jellyfin_version: "10.11.0.0"
+owner: "jackwander"
+nicename: "Graveyard Analytics"
+description: "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and track your active Visitors."
+overview: "Advanced storage reclamation and user analytics."
+category: "Analytics"
+# The assembly is JellyfinGraveyardAnalyticsPlugin.dll. JellyfinAnalyticsPlugin.dll is the
+# pre-1.0 name, and is also what the committed Releases/*.dll were still called.
+# Microsoft.Data.Sqlite is deliberately absent: the csproj compiles against it and never
+# ships it, because Jellyfin already has it loaded.
+artifacts:
+  - "JellyfinGraveyardAnalyticsPlugin.dll"
+  - "Dapper.dll"
+build_type: "dotnet"
+dotnet_configuration: "Release"
+dotnet_framework: "net9.0"

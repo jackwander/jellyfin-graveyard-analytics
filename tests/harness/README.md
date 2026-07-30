@@ -4,8 +4,26 @@ Throwaway-grade checks that were written to *verify claims*, not to be a test
 suite. They are committed because each one is the evidence behind a `PLAN.md`
 finding, and because re-deriving them costs more than keeping them.
 
-**These are not the project's test suite.** Phase 6 adds a real xUnit project.
-Nothing here runs in CI yet and there is no runner tying them together.
+**These are not the project's test suite.** That is
+`tests/GraveyardAnalytics.Tests` (85 tests), added in Phase 6 and run in CI by
+`.github/workflows/build.yml`.
+
+What went there and what stayed here. The suite took the claims that are about
+*shipped behaviour* and can be stated as an assertion: `FormatBytes`, D2's play
+threshold across all four aggregates, D1's floor gate driven through the real
+`GetLeastWatchedItems`, the configuration clamps, finding 30's parse and its
+serialized form, the `TtlCache`, and that the embedded Chapel artwork is present
+under the names the controller asks for. Several of those overlap a harness here
+on purpose — the suite is the version that runs on every push, and the harness is
+the version that can be pointed at an *old* assembly with `GRAVEYARD_DLL` to show
+the check was not vacuous.
+
+What stayed: everything that is a statement about SQLite or about the environment
+rather than about this plugin (`probes` A, the four WAL arrangements), the live
+Tracearr probe, the side-by-side old/new comparisons, and the webhook mirror.
+
+The dashboard harnesses **do** run in CI now — they are still the only thing that
+executes the shipped `dashboard.html` at all.
 
 ## Why they exist at all
 

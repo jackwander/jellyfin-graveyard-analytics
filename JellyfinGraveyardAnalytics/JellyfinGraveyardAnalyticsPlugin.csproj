@@ -1,28 +1,69 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework> <ImplicitUsings>enable</ImplicitUsings>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>JellyfinGraveyardAnalytics</RootNamespace>
     <Nullable>enable</Nullable>
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <!--
+      One place the version lives. build.yaml and manifest.json carry the same
+      four-part number, and release.sh checks that all three agree before it ships.
+      Jellyfin reads the assembly version when it lists an installed plugin, so a
+      missing one showed as 1.0.0.0 whatever the release was called.
+    -->
+    <Version>1.1.0.0</Version>
+    <AssemblyVersion>1.1.0.0</AssemblyVersion>
+    <FileVersion>1.1.0.0</FileVersion>
+    <Authors>jackwander</Authors>
+    <Product>Graveyard Analytics</Product>
+    <Company>jackwander</Company>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
   <ItemGroup>
     <!--
       Pinned, not floating. "10.11.*-*" resolved to 10.11.11, which removed
       IUserManager.Users and broke the build from a clean checkout; local builds only
-      kept working because obj/project.assets.json still held 10.11.6. Phase 6 decides
-      whether to move to the newer API; until then the version is explicit so CI and a
-      fresh clone build the same thing this tree does.
+      kept working because obj/project.assets.json still held 10.11.6. Phase 6 kept the
+      pin: moving to the newer API is a code change, not a build change, and CI and a
+      fresh clone have to build the same thing this tree does.
     -->
     <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.6" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" Version="2.2.5" />
     <PackageReference Include="Dapper" Version="2.1.35" />
-    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+    <!--
+      Compile against it, never ship it. Jellyfin already loads Microsoft.Data.Sqlite
+      and SQLitePCLRaw into the same context, and a second copy in the plugin directory
+      is how you get a native-provider clash. release.sh has only ever shipped Dapper.dll
+      and the plugin, so this makes the publish directory say what the release always did.
+
+      Both asset classes, not just "runtime": that one drops the managed assemblies but
+      leaves the `native` RID assets, so publish still emitted a runtimes/ tree carrying
+      e_sqlite3 for twenty platforms. The CI shipped-set check is what caught it.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" ExcludeAssets="runtime;native" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="WebUI\dashboard.html" />
+    <!--
+      Chapel collection artwork. Embedded because the controller used to fetch these
+      from raw.githubusercontent.com at condemn time: a plugin that only brands the
+      collection correctly when the server has outbound internet and the repo is
+      still at that path.
+    -->
+    <EmbeddedResource Include="Resources\thechapelcollectionthumbnail.jpg" />
+    <EmbeddedResource Include="Resources\thechapelcollectionbackdrop.jpg" />
   </ItemGroup>
 </Project>

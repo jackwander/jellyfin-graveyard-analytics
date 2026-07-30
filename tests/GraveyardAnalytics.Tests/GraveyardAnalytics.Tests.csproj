@@ -1,0 +1,56 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!--
+      net10.0, not net9.0, for the same reason every harness under tests/harness is:
+      only the 10.0.x runtime is installed on the development machine, so a net9.0 test
+      host cannot start there. The plugin's net9.0 assembly loads into a net10.0 host
+      fine, and the ProjectReference below is a normal downlevel reference.
+    -->
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <!--
+      The plugin is built with warnings as errors in CI. This project deliberately does
+      things production code should not — constructs out-of-range configuration, parses
+      malformed timestamps — so it opts out of the analyzer rules that flag exactly that,
+      via .editorconfig rather than blanket suppression.
+    -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisMode>Recommended</AnalysisMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <!--
+      Same version the plugin compiles against. The Repository tests open a real SQLite
+      file, and the plugin does not ship this assembly (ExcludeAssets="runtime"), so the
+      test host has to bring its own copy.
+    -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+    <!--
+      Microsoft.Data.Sqlite 8.0.8 drags in SQLitePCLRaw.lib.e_sqlite3 2.1.6, which carries
+      a high-severity advisory (GHSA-2m69-gcr7-jv3q) and so is a NU1903 — an error under
+      the warnings-as-errors build. It is a transitive pin, not a choice: raising
+      Microsoft.Data.Sqlite would take the plugin's compile-time reference away from the
+      version Jellyfin loads, and this is the native library, so overriding it here is
+      safe. Nothing about it ships: the plugin excludes SQLite's runtime assets entirely,
+      and this reference exists only so the test host can open a real database file.
+    -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="2.1.12" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\JellyfinGraveyardAnalytics\JellyfinGraveyardAnalyticsPlugin.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+</Project>

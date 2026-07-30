@@ -462,7 +462,7 @@ namespace JellyfinGraveyardAnalytics.Services
                         if (item.TryGetProperty("thumbPath", out var thumbProp))
                         {
                             var path = thumbProp.GetString();
-                            if (!string.IsNullOrEmpty(path) && path.StartsWith("/Items/"))
+                            if (!string.IsNullOrEmpty(path) && path.StartsWith("/Items/", StringComparison.Ordinal))
                             {
                                 var parts = path.Split('/');
                                 if (parts.Length > 2) itemId = parts[2]; // Grabs the ID segment
@@ -507,7 +507,7 @@ namespace JellyfinGraveyardAnalytics.Services
                             // with UTC — same column, two meanings, differing by the offset.
                             if (TryParseUtc(startedProp.GetString(), out var dt))
                             {
-                                if (!lastPlayedDates.ContainsKey(itemId) || dt > lastPlayedDates[itemId])
+                                if (!lastPlayedDates.TryGetValue(itemId, out var existing) || dt > existing)
                                 {
                                     lastPlayedDates[itemId] = dt;
                                 }

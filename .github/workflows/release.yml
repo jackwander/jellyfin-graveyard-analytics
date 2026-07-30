@@ -1,0 +1,118 @@
+name: Release
+
+# Fires on a vX.X.X.X tag. It builds the same two files release.sh stages, attaches the zip
+# to the GitHub release, and prints the checksum — then stops.
+#
+# It deliberately does not patch manifest.json. That file is served from master and is what
+# every installed client polls; rewriting it from a tag build would mean a release is
+# announced to users before anyone has confirmed the zip is right. The manifest edit stays
+# a commit on master, which release.sh makes into one command.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (vX.X.X.X)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Resolve the version
+        id: version
+        run: |
+          set -euo pipefail
+          raw="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${raw#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$raw' is not a four-part version."
+            exit 1
+          fi
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The tag is the source of truth for what is being shipped, and the assembly version is
+      # what Jellyfin shows on the Plugins page. If those disagree, the release installs and
+      # then reports the wrong version forever — and nothing else in the pipeline notices.
+      - name: Check the tag matches what the tree says it is
+        run: |
+          set -euo pipefail
+          expected="${{ steps.version.outputs.version }}"
+
+          csproj=$(grep -o '<Version>[^<]*</Version>' JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj \
+            | head -1 | sed 's|<Version>\(.*\)</Version>|\1|')
+          yaml=$(grep -o '^version: "[^"]*"' JellyfinGraveyardAnalytics/build.yaml \
+            | head -1 | sed 's|version: "\(.*\)"|\1|')
+
+          fail=0
+          [ "$csproj" = "$expected" ] || { echo "::error::csproj says $csproj, tag says $expected"; fail=1; }
+          [ "$yaml" = "$expected" ]   || { echo "::error::build.yaml says $yaml, tag says $expected"; fail=1; }
+          exit $fail
+
+      - name: Test
+        run: >
+          dotnet test tests/GraveyardAnalytics.Tests/GraveyardAnalytics.Tests.csproj
+          -c Release -p:TreatWarningsAsErrors=true
+
+      - name: Publish
+        run: >
+          dotnet publish JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj
+          -c Release -p:TreatWarningsAsErrors=true
+
+      - name: Stage and zip
+        id: package
+        run: |
+          set -euo pipefail
+          publish=JellyfinGraveyardAnalytics/bin/Release/net9.0/publish
+          dest="Releases/${{ steps.version.outputs.tag }}"
+          mkdir -p "$dest"
+
+          for file in Dapper.dll JellyfinGraveyardAnalyticsPlugin.dll; do
+            test -f "$publish/$file" || { echo "::error::$file missing from publish output"; exit 1; }
+            cp "$publish/$file" "$dest/"
+          done
+
+          ( cd "$dest" && zip -q JellyfinGraveyardAnalytics.zip Dapper.dll JellyfinGraveyardAnalyticsPlugin.dll )
+
+          checksum=$(md5sum "$dest/JellyfinGraveyardAnalytics.zip" | cut -d' ' -f1)
+          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
+          echo "path=$dest/JellyfinGraveyardAnalytics.zip" >> "$GITHUB_OUTPUT"
+
+      # The manifest is committed ahead of the tag, so this catches the case where the zip
+      # CI built is not the zip the checksum was computed from — a mismatch every client
+      # would otherwise discover as a failed install.
+      - name: Check the checksum against the committed manifest
+        run: |
+          set -euo pipefail
+          expected=$(jq -r --arg v "${{ steps.version.outputs.version }}" \
+            'first(.[0].versions[] | select(.version == $v) | .checksum) // ""' manifest.json)
+
+          if [ -z "$expected" ]; then
+            echo "::warning::manifest.json has no entry for ${{ steps.version.outputs.version }} yet."
+          elif [ "$expected" != "${{ steps.package.outputs.checksum }}" ]; then
+            echo "::error::manifest says $expected, this build produced ${{ steps.package.outputs.checksum }}"
+            exit 1
+          fi
+
+      - name: Attach the zip to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          files: ${{ steps.package.outputs.path }}
+          body: |
+            MD5 `${{ steps.package.outputs.checksum }}`
+
+            Install through the plugin catalogue rather than by hand — the manifest entry on
+            `master` is what points here, and its checksum has to match this exact file.
+          fail_on_unmatched_files: true

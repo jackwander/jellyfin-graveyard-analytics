@@ -101,15 +101,51 @@ To install Graveyard Analytics, add this repository to your Jellyfin server:
 ---
 
 ## 🛠️ Building from Source
-If you wish to compile the plugin yourself:
+
+There is no solution file, and the repository root holds no project — the csproj lives in
+`JellyfinGraveyardAnalytics/`, so `dotnet publish` has to be pointed at it. (Running it from
+the root is what the old instructions said, and it fails with `MSB1003`.)
 
 1. Clone the repository.
-2. Ensure you have the .NET 9 SDK installed.
-3. Run the following command in the project root:
+2. Install the .NET 9 SDK, or any later SDK — the project targets `net9.0` and the .NET 10
+   SDK builds it unchanged.
+3. Build:
    ```bash
+   cd JellyfinGraveyardAnalytics
    dotnet publish -c Release
    ```
-4. Place the resulting .dll files into your Jellyfin plugins directory.
+4. Copy **two** files out of `bin/Release/net9.0/publish/` into a folder under your Jellyfin
+   `plugins/` directory:
+   * `JellyfinGraveyardAnalyticsPlugin.dll`
+   * `Dapper.dll`
+
+   Nothing else. In particular do **not** copy `Microsoft.Data.Sqlite.dll` or the
+   `runtimes/` folder if an older build left them there: Jellyfin already has SQLite
+   loaded, and a second copy of the native provider in the plugin directory is how you get
+   a load failure. The current build no longer emits them.
+5. Restart Jellyfin.
+
+### Cutting a release
+
+```bash
+./release.sh v1.2.0.0 --changelog "What changed."
+```
+
+Stamps the version into the csproj and `build.yaml`, publishes, zips the two assemblies
+into `Releases/v1.2.0.0/`, and patches `manifest.json` with the real MD5 and a UTC
+timestamp. `--dry-run` does everything except rewrite those files. Upload the resulting
+zip to the matching GitHub release — the `sourceUrl` in the manifest points at it, and the
+checksum only matches that exact file.
+
+### Tests
+
+```bash
+dotnet test tests/GraveyardAnalytics.Tests    # the unit suite
+```
+
+`tests/harness/` holds the verification harnesses that back the findings in `PLAN.md` —
+jsdom over the real dashboard, and reflection over the built assembly. They are evidence,
+not a suite; see `tests/harness/README.md`.
 
 ---
 
