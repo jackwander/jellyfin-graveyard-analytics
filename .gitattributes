@@ -1,0 +1,10 @@
+# Shell scripts must be checked out with LF endings, whatever the developer's
+# core.autocrlf says. With autocrlf=true — the Windows default, and set globally on at
+# least one machine here — a checkout rewrites release.sh with CRLF, and the shebang then
+# fails as `env: bash\r: No such file or directory`. The repository stores LF either way;
+# this is about what lands in the working tree.
+*.sh text eol=lf
+
+# Same reasoning for the files CI and the release pipeline parse.
+*.yml text eol=lf
+*.yaml text eol=lf
