@@ -144,8 +144,23 @@ for FILE in "${FILES[@]}"; do
   echo "✅ Staged $FILE"
 done
 
+# A zip records each entry's modification time, and `dotnet publish` stamps the plugin DLL
+# with the moment it ran — so the same source produced a different archive, and a different
+# md5, on every single build. That is not cosmetic: release.yml commits the manifest first
+# and then *rebuilds* the zip in CI and refuses to publish if the checksums disagree, so
+# that gate could never have passed. The pipeline had never been run end to end.
+#
+# The assemblies themselves are already byte-identical build to build (the .NET compiler is
+# deterministic); only the timestamps moved. Flattening them to the zip epoch — 1980-01-01,
+# the earliest the format can represent — makes the archive a function of its contents.
+# -X drops the uid/gid and high-precision timestamp extras, which differ between the
+# maintainer's machine and CI's runner even when the files do not.
 echo "🗜️  Zipping..."
-( cd "$DEST_DIR" && zip -q "$ZIP_NAME" "${FILES[@]}" )
+(
+  cd "$DEST_DIR"
+  touch -t 198001010000 "${FILES[@]}"
+  zip -qX "$ZIP_NAME" "${FILES[@]}"
+)
 
 CHECKSUM="$(md5_of "$DEST_DIR/$ZIP_NAME")"
 # -u so the stamp is UTC and not the releaser's timezone; both date implementations
