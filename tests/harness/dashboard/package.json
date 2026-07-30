@@ -1,0 +1,12 @@
+{
+  "name": "graveyard-dashboard-harness",
+  "private": true,
+  "type": "module",
+  "description": "Drives the real WebUI/dashboard.html render functions in a DOM.",
+  "scripts": {
+    "test": "node xss.test.mjs && node actions.test.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.0.0"
+  }
+}

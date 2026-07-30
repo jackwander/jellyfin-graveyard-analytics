@@ -20,12 +20,19 @@ One finding changed on contact with reality: **finding 5's webhook auth bypass
 was struck in Phase 0** (empty query values bind to `null`, so the endpoint
 failed closed). The rest of finding 5 was real and is fixed.
 
-No Jellyfin server is available locally, and only the dotnet 10.0.4 runtime is
-installed, so the plugin can be built but not loaded here. Runtime claims were
-verified with throwaway harnesses in the session scratchpad instead — a jsdom
-script driving the real `dashboard.html` render functions, and a small ASP.NET
-Core app mirroring the webhook. Neither is committed; Phase 6 adds the real test
-project.
+No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
+installed, so the plugin can be built but **not loaded** here. Runtime claims
+were verified with the harnesses in `tests/harness/` — jsdom driving the real
+`dashboard.html`, reflection over the built assembly, and an ASP.NET Core app
+mirroring the webhook. Read `tests/harness/README.md` before trusting or
+extending them: they are evidence for `PLAN.md` findings, not a test suite, and
+the webhook probes are a *mirror* of controller logic that must be updated
+alongside it. Phase 6 still adds the real xUnit project.
+
+The `Jellyfin.Controller` / `Jellyfin.Model` references are **pinned to
+10.11.6**. Do not restore the floating `10.11.*-*`: it resolves to 10.11.11,
+which removed `IUserManager.Users` and breaks the build from a clean checkout
+(`AnalyticsService.cs:429`).
 
 ## Build
 

@@ -1,0 +1,18 @@
+<!-- Web SDK: the webhook probes host real MVC controllers to exercise model binding
+     and authorization the same way the plugin's controllers are exercised. -->
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- net10.0 because only that runtime is installed locally; these probes exercise
+         library and ASP.NET Core behavior, not the plugin's own net9.0 target. -->
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>graveyard-probes</AssemblyName>
+    <RootNamespace>GraveyardProbes</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Matches the version the plugin references, so SQLite behavior is comparable. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.8" />
+  </ItemGroup>
+</Project>
