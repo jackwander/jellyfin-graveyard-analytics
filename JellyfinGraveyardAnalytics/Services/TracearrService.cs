@@ -399,7 +399,15 @@ namespace JellyfinGraveyardAnalytics.Services
             return char.ToUpperInvariant(value[0]) + value.Substring(1);
         }
 
-        public async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetTracearrPlaybackStatsAsync(int weeksBack = 52, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// The four media-tab aggregates, built from Tracearr history.
+        /// </summary>
+        /// <remarks>
+        /// <paramref name="weeksBack"/> is converted to a real <c>startDate</c>/<c>endDate</c>
+        /// window — Tracearr has no <c>weeksBack</c> parameter and silently ignored the one
+        /// this used to send.
+        /// </remarks>
+        public async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates, Dictionary<string, long> playDurations)> GetTracearrPlaybackStatsAsync(int weeksBack = 52, CancellationToken cancellationToken = default)
         {
             var windowEnd = DateTime.UtcNow.Date;
             var windowStart = windowEnd.AddDays(-7 * Math.Max(weeksBack, 1));
@@ -412,6 +420,12 @@ namespace JellyfinGraveyardAnalytics.Services
             var playCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var itemViewers = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             var lastPlayedDates = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
+
+            // Fourth aggregate, "Time Played". The Chapel and Sanctuary previously read this
+            // from the local Playback Reporting database even when Tracearr was the engine,
+            // so a single row mixed two sources — and with no local database present those
+            // two tabs failed outright.
+            var playDurations = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
 
             // D2's floor. The local engine pushes MinPlayDurationSeconds into all three of
             // these aggregates at the SQL level; Tracearr has no equivalent filter, so it is
@@ -455,7 +469,8 @@ namespace JellyfinGraveyardAnalytics.Services
                         // 1b. Apply the play threshold. durationMs is the elapsed session
                         // time — the analog of Playback Reporting's PlayDuration — not the
                         // item runtime, which is totalDurationMs.
-                        if (ReadInt64(item, "durationMs") / 1000 < minPlaySeconds)
+                        var playSeconds = ReadInt64(item, "durationMs") / 1000;
+                        if (playSeconds < minPlaySeconds)
                         {
                             belowThreshold++;
                             continue;
@@ -464,6 +479,10 @@ namespace JellyfinGraveyardAnalytics.Services
                         // 2. Tally Play Counts
                         if (!playCounts.ContainsKey(itemId)) playCounts[itemId] = 0;
                         playCounts[itemId]++;
+
+                        // 2b. Tally Time Played
+                        playDurations.TryGetValue(itemId, out var runningSeconds);
+                        playDurations[itemId] = runningSeconds + playSeconds;
 
                         // 3. Tally Unique Viewers
                         string username = "Unknown";
@@ -521,7 +540,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     minPlaySeconds);
             }
 
-            return (playCounts, itemViewers, lastPlayedDates);
+            return (playCounts, itemViewers, lastPlayedDates, playDurations);
         }
 
         /// <summary>

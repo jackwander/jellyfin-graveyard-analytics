@@ -69,6 +69,13 @@ namespace JellyfinGraveyardAnalytics
         public void RegisterServices(IServiceCollection serviceCollection, IServerApplicationHost applicationHost)
         {
             serviceCollection.AddHttpClient<TracearrService>();
+
+            // The cache is the singleton — a per-request one would cache nothing. The
+            // provider around it stays scoped so it can depend on the transient
+            // TracearrService without pinning its HttpClient.
+            serviceCollection.AddSingleton(
+                _ => new TtlCache<PlaybackStats>(PlaybackStatsProvider.CacheLifetime));
+            serviceCollection.AddScoped<PlaybackStatsProvider>();
         }
     }
 }

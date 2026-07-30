@@ -89,6 +89,30 @@ inside the window — the one harness here that exercises shipped code against t
 real service rather than a mirror. The key is read from the environment and is
 never written to the repo.
 
+## dotnet/ttlcache/ — the aggregate cache (Phase 4 item 15)
+
+```bash
+cd dotnet/ttlcache && dotnet run     # 12 checks
+```
+
+Reflects `TtlCache<T>` out of the built DLL and drives it with an **injected
+clock**, so the TTL is crossed without sleeping, and a factory that counts its
+own invocations — one invocation is one full set of aggregate queries.
+
+This is the harness behind Phase 4's done-when ("a debounced keystroke issues no
+new SQL inside the TTL window"): ten reads inside the window load once, 59s is
+still cached and 61s is not, a signature change (engine or play threshold) is a
+miss rather than stale data, `Invalidate` forces a reload inside the window, and
+eight concurrent readers collapse into a single load.
+
+Caveat worth keeping straight: this verifies the **cache**, not the database.
+Nothing here observes SQLite. The done-when holds because the factory runs once
+per window *and* is the only remaining caller of the repository aggregates — the
+second half of that is read from the code, not measured.
+`PlaybackStatsProvider` itself cannot be driven here at all; it reads
+`Plugin.Instance`, which needs a running Jellyfin. The caching was split out of
+it precisely so this much could be checked without one.
+
 ## dotnet/probes/ — SQLite and webhook behavior
 
 ```bash

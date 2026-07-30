@@ -40,15 +40,59 @@ namespace JellyfinGraveyardAnalytics.Services
         public const int BarelyTouchedPlayCeiling = 2;
 
         /// <summary>
+        /// Every episode in the library, grouped by series id. Built at most once per
+        /// request (this service is constructed per call) and never at all when the request
+        /// touches no series.
+        /// </summary>
+        /// <remarks>
+        /// Replaces a <c>GetRecursiveChildren</c> walk per series. The old shape ran one
+        /// library walk for every row it mapped, so a 500-series library did 500 walks to
+        /// render ten rows — and it did that again on every debounced keystroke. One query
+        /// answers all of them.
+        /// </remarks>
+        private Dictionary<Guid, List<BaseItem>>? _episodesBySeries;
+
+        private Dictionary<Guid, List<BaseItem>> EpisodesBySeries
+        {
+            get
+            {
+                if (_episodesBySeries is not null)
+                {
+                    return _episodesBySeries;
+                }
+
+                var query = new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    IncludeItemTypes = new[] { Jellyfin.Data.Enums.BaseItemKind.Episode },
+                    IsVirtualItem = false,
+                    Recursive = true
+                };
+
+                _episodesBySeries = _libraryManager.GetItemList(query)
+                    .OfType<MediaBrowser.Controller.Entities.TV.Episode>()
+                    .GroupBy(e => e.SeriesId)
+                    .ToDictionary(g => g.Key, g => g.Cast<BaseItem>().ToList());
+
+                return _episodesBySeries;
+            }
+        }
+
+        /// <summary>
+        /// Episodes of one series. Item 17: membership comes from the query's
+        /// <c>BaseItemKind.Episode</c> filter rather than a <c>Path != null</c> test, which
+        /// also admitted seasons and any other pathless child.
+        /// </summary>
+        private List<BaseItem> EpisodesOf(MediaBrowser.Controller.Entities.TV.Series series)
+            => EpisodesBySeries.TryGetValue(series.Id, out var episodes)
+                ? episodes
+                : new List<BaseItem>();
+
+        /// <summary>
         /// The Morgue: strictly zero-play items that have been in the library long enough
         /// for that to mean neglect (D1), and that playback history can actually speak to.
         /// Optionally widened to barely-touched rows, which are otherwise visible nowhere —
         /// the Sanctuary sorts by vitality descending.
         /// </summary>
-        /// <param name="historyFloorUtc">
-        /// Oldest playback activity on record. Items added before it are withheld unless
-        /// <paramref name="includeUnverifiable"/> is set. Null when there is no history.
-        /// </param>
         /// <param name="includeUnverifiable">
         /// Include candidates predating playback history. They cannot be confirmed unwatched,
         /// so this is opt-in: the list feeds Condemn and then deletion.
@@ -57,13 +101,15 @@ namespace JellyfinGraveyardAnalytics.Services
           string mediaType,
           string? mediaSearch,
           int limit,
-          Dictionary<string, int> playCounts,
-          Dictionary<string, HashSet<string>> itemViewers,
-          Dictionary<string, DateTime> lastPlayedDates,
+          PlaybackStats stats,
           bool includeBarelyTouched = false,
-          DateTime? historyFloorUtc = null,
           bool includeUnverifiable = false)
         {
+            var playCounts = stats.PlayCounts;
+            var itemViewers = stats.ItemViewers;
+            var lastPlayedDates = stats.LastPlayedDates;
+            var historyFloorUtc = stats.HistoryFloorUtc;
+
             var now = DateTime.UtcNow;
             var graceDays = _config.MorgueGraceDays;
             var cutoff = now.AddDays(-graceDays);
@@ -95,7 +141,18 @@ namespace JellyfinGraveyardAnalytics.Services
             var query = BuildMediaQuery(mediaType, mediaSearch, chapelOnly: false);
             var candidates = ApplySearchAndDedupe(_libraryManager.GetItemList(query), mediaSearch);
 
-            var mappedItems = candidates.Select(item =>
+            // The age test reads straight off the item and nothing the mapping computes can
+            // change it, so it runs before the mapping that has to touch every episode of
+            // every series. Only rows that could still qualify get mapped.
+            //
+            // The floor gate deliberately stays downstream: items it withholds are still
+            // *counted* for the banner's disclosure, and that count is of zero-play
+            // candidates, which is not known until the mapping has run.
+            var aged = candidates
+                .Where(item => item.DateCreated <= cutoff)
+                .ToList();
+
+            var mappedItems = aged.Select(item =>
             {
                 string formattedId = item.Id.ToString("N");
                 long totalSize = 0;
@@ -105,9 +162,7 @@ namespace JellyfinGraveyardAnalytics.Services
 
                 if (item is MediaBrowser.Controller.Entities.TV.Series series)
                 {
-                    var children = series.GetRecursiveChildren(null);
-
-                    var validEpisodes = children.Where(c => c.Path != null).ToList();
+                    var validEpisodes = EpisodesOf(series);
 
                     totalSize = validEpisodes.Sum(e => e.Size ?? 0);
                     totalPlays = (playCounts.TryGetValue(formattedId, out int sCount) ? sCount : 0) +
@@ -176,9 +231,9 @@ namespace JellyfinGraveyardAnalytics.Services
             // only -- the age test and the floor gate always apply.
             int playCeiling = includeBarelyTouched ? BarelyTouchedPlayCeiling : 0;
 
+            // Age was already applied to `aged` above, before the mapping.
             var morgueCandidates = mappedItems
                 .Where(x => x.PlayCount <= playCeiling)
-                .Where(x => x.DateAdded.HasValue && x.DateAdded.Value <= cutoff)
                 .ToList();
 
             // Candidates history cannot speak to, counted whether or not they are shown so
@@ -308,13 +363,16 @@ namespace JellyfinGraveyardAnalytics.Services
             string mediaType,
             string? mediaSearch,
             int limit,
-            Dictionary<string, int> playCounts,
-            Dictionary<string, HashSet<string>> itemViewers,
-            Dictionary<string, DateTime> lastPlayedDates)
+            PlaybackStats stats)
         {
-            // Hoisted: this is a full-table SUM/GROUP BY. Inside the Select lambda below it
-            // re-ran once per Chapel item.
-            var playDurations = _repository.GetItemPlayDurations(_config.MinPlayDurationSeconds);
+            var playCounts = stats.PlayCounts;
+            var itemViewers = stats.ItemViewers;
+            var lastPlayedDates = stats.LastPlayedDates;
+
+            // Comes from the provider with the other three now. It used to be read straight
+            // off the local database here, which meant this row's Time Played came from
+            // Playback Reporting while its Plays came from Tracearr.
+            var playDurations = stats.PlayDurations;
 
             var query = BuildMediaQuery(mediaType, mediaSearch, chapelOnly: true);
             var purgatoryItems = ApplySearchAndDedupe(_libraryManager.GetItemList(query), mediaSearch);
@@ -333,9 +391,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     // One source of episodes, not two. This previously ran both an
                     // InternalItemsQuery and GetRecursiveChildren, then mixed the results:
                     // size and plays came from one list while durations came from the other.
-                    var validEpisodes = series.GetRecursiveChildren(null)
-                        .Where(c => c.GetBaseItemKind() == Jellyfin.Data.Enums.BaseItemKind.Episode)
-                        .ToList();
+                    var validEpisodes = EpisodesOf(series);
 
                     itemSize = validEpisodes.Sum(e => e.Size ?? 0);
 
@@ -403,11 +459,12 @@ namespace JellyfinGraveyardAnalytics.Services
             string mediaType,
             string? mediaSearch,
             int limit,
-            Dictionary<string, int> playCounts,
-            Dictionary<string, HashSet<string>> itemViewers,
-            Dictionary<string, DateTime> lastPlayedDates)
+            PlaybackStats stats)
         {
-            var playDurations = _repository.GetItemPlayDurations(_config.MinPlayDurationSeconds);
+            var playCounts = stats.PlayCounts;
+            var itemViewers = stats.ItemViewers;
+            var lastPlayedDates = stats.LastPlayedDates;
+            var playDurations = stats.PlayDurations;
 
             var query = BuildMediaQuery(mediaType, mediaSearch, chapelOnly: false);
             var uniqueItems = ApplySearchAndDedupe(_libraryManager.GetItemList(query), mediaSearch);
@@ -423,8 +480,7 @@ namespace JellyfinGraveyardAnalytics.Services
 
                 if (item is MediaBrowser.Controller.Entities.TV.Series series)
                 {
-                    var children = series.GetRecursiveChildren(null);
-                    var validEpisodes = children.Where(c => c.Path != null).ToList();
+                    var validEpisodes = EpisodesOf(series);
 
                     totalSize = validEpisodes.Sum(e => e.Size ?? 0);
                     totalPlays = (playCounts.TryGetValue(formattedId, out int sCount) ? sCount : 0) +

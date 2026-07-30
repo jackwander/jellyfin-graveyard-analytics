@@ -48,9 +48,11 @@ namespace JellyfinGraveyardAnalytics.Controllers
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly IProviderManager _providerManager;
         private readonly TracearrService _tracearrService;
+        private readonly PlaybackStatsProvider _playbackStats;
 
         public GraveyardAnalyticsController(
             TracearrService tracearrService,
+            PlaybackStatsProvider playbackStats,
             ILibraryManager libraryManager,
             ILogger<GraveyardAnalyticsController> logger,
             ICollectionManager collectionManager,
@@ -65,78 +67,29 @@ namespace JellyfinGraveyardAnalytics.Controllers
             _userManager = userManager;
             _httpClientFactory = httpClientFactory;
             _providerManager = providerManager;
+            _playbackStats = playbackStats;
         }
 
-        /// <summary>
-        /// How far back the Tracearr history aggregate reaches. Doubles as the history
-        /// floor on that engine, since the aggregate cannot see past the window we request.
-        /// </summary>
-        private const int TracearrHistoryWeeks = 52;
-
-        /// <summary>
-        /// Oldest playback activity the active engine can see, or null when there is none.
-        /// Playback Reporting knows its own floor; on Tracearr the aggregate is bounded by
-        /// the weeks we ask for, so that window is the floor.
-        /// </summary>
-        private DateTime? GetHistoryFloorUtc()
-        {
-            if (Plugin.Instance.Configuration.EnableTracearr)
-            {
-                return DateTime.UtcNow.AddDays(-7 * TracearrHistoryWeeks);
-            }
-
-            try
-            {
-                return Plugin.Instance.Repository.GetHistoryFloorDate();
-            }
-            catch (Exception ex)
-            {
-                // Treated as "no history", which yields an empty Morgue and a banner rather
-                // than a library-wide list of unverifiable claims.
-                _logger.LogWarning(ex, "Could not read the playback history floor.");
-                return null;
-            }
-        }
-
-        private async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetPlaybackStatsAsync(CancellationToken cancellationToken)
-        {
-            var config = Plugin.Instance.Configuration;
-            if (config.EnableTracearr)
-            {
-                var stats = await _tracearrService.GetTracearrPlaybackStatsAsync(TracearrHistoryWeeks, cancellationToken).ConfigureAwait(false);
-                return (stats.playCounts, stats.itemViewers, stats.lastPlayedDates);
-            }
-            else
-            {
-                if (!System.IO.File.Exists(Plugin.Instance.Repository.PlaybackDbPath))
-                {
-                    throw new PlaybackDataUnavailableException(PlaybackUnavailableMessage);
-                }
-
-                var threshold = Plugin.Instance.Configuration.MinPlayDurationSeconds;
-                var playCounts = Plugin.Instance.Repository.GetItemPlayCounts(threshold);
-                var itemViewers = Plugin.Instance.Repository.GetItemViewers(threshold);
-                var lastPlayedDates = Plugin.Instance.Repository.GetItemLastPlayedDates(threshold);
-                return (playCounts, itemViewers, lastPlayedDates);
-            }
-        }
+        private AnalyticsService NewAnalyticsService()
+            => new AnalyticsService(
+                Plugin.Instance.Repository,
+                _libraryManager,
+                Plugin.UserDataManager,
+                _userManager,
+                Plugin.Instance.Configuration);
 
         [HttpGet("LeastWatched")]
         public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, [FromQuery] bool includeBarelyTouched = false, [FromQuery] bool includeUnverifiable = false, CancellationToken cancellationToken = default)
         {
             try
             {
-                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
-                return Ok(service.GetLeastWatchedItems(
+                var stats = await _playbackStats.GetAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(NewAnalyticsService().GetLeastWatchedItems(
                     mediaType,
                     mediaSearch,
                     limit,
-                    playCounts,
-                    itemViewers,
-                    lastPlayedDates,
+                    stats,
                     includeBarelyTouched,
-                    GetHistoryFloorUtc(),
                     includeUnverifiable));
             }
             catch (PlaybackDataUnavailableException ex)
@@ -156,9 +109,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
         {
             try
             {
-                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
-                return Ok(service.GetLivingItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
+                var stats = await _playbackStats.GetAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(NewAnalyticsService().GetLivingItems(mediaType, mediaSearch, limit, stats));
             }
             catch (PlaybackDataUnavailableException ex)
             {
@@ -177,9 +129,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
         {
             try
             {
-                var (playCounts, itemViewers, lastPlayedDates) = await GetPlaybackStatsAsync(cancellationToken).ConfigureAwait(false);
-                var service = new AnalyticsService(Plugin.Instance.Repository, _libraryManager, Plugin.UserDataManager, _userManager, Plugin.Instance.Configuration);
-                return Ok(service.GetPurgatoryItems(mediaType, mediaSearch, limit, playCounts, itemViewers, lastPlayedDates));
+                var stats = await _playbackStats.GetAsync(cancellationToken).ConfigureAwait(false);
+                return Ok(NewAnalyticsService().GetPurgatoryItems(mediaType, mediaSearch, limit, stats));
             }
             catch (PlaybackDataUnavailableException ex)
             {
@@ -221,6 +172,10 @@ namespace JellyfinGraveyardAnalytics.Controllers
 
                 _libraryManager.DeleteItem(item, options, true);
 
+                // The item is gone from the library, so every cached aggregate that mentions
+                // it is stale. Without this the tab it was deleted from keeps showing it for
+                // up to the TTL.
+                _playbackStats.Invalidate();
                 return Ok(new { message = "Subject has been laid to rest." });
             }
             catch (Exception ex)
@@ -348,6 +303,9 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     }
                 }
 
+                // Moves the item between the Morgue and the Chapel, so both tabs' cached
+                // views are now wrong.
+                _playbackStats.Invalidate();
                 return Ok(new { message = "Subject condemned to The Chapel." });
             }
             catch (Exception ex)
@@ -389,6 +347,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     }
                 }
 
+                // The reverse of Condemn, and stale in the same two places.
+                _playbackStats.Invalidate();
                 return Ok(new { message = "Subject has been pardoned." });
             }
             catch (Exception ex)

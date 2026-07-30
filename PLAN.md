@@ -99,6 +99,7 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | 24 | **`TestConnectionAsync` calls an endpoint that does not exist.** `GET /api/v1/public/system/status` → **404** on a live, healthy Tracearr. So the Settings tab's connection test can *never* succeed, and `PingTracearr` reports "Could not connect to Tracearr. Check your URL and API Key." even when the URL and key are perfect. Same class of bug as finding 1, missed by static reading because the endpoint name looks plausible. Confirmed real endpoints under `/api/v1/public/`: `history`, `users`, `stats`, `docs` (all 401 unauthenticated). Unauthenticated `GET /health` at the server root returns `{"status":"ok",...}`. | `TracearrService.cs:66` |
 | 25 | **`media/stale` does not exist either** — `GET /api/v1/public/media/stale` → 404. Both dead methods that Phase 2 deletes were built against an endpoint Tracearr does not serve, so they could never have worked. Strengthens item 8 from "dead code" to "dead *and* wrong". | `TracearrService.cs` (deleted methods) |
 | 26 | ~~Morgue aggregate truncated far worse than the cap suggests.~~ **Withdrawn** — the 847-sessions-per-week measurement it rested on was finding 27's ignored parameter returning all-time totals. A real week is 16. Its open question ("try `stats`/`users` before enlarging the cap") was answered: neither carries item identity, so `history` is the only possible source. Full write-up below. | — |
+| 29 | **The Chapel and Sanctuary read Time Played from the local database regardless of engine.** `GetItemPlayDurations` was called outside the engine branch, so a Tracearr row mixed two sources — and with no Playback Reporting database present, both tabs threw a 500 because the `File.Exists` guard was in the local branch only. Fixed by the Phase 4 provider. Full write-up below. | `AnalyticsService.cs:317`, `:410` (pre-fix) |
 | 28 | **D2's play threshold was never applied on the Tracearr engine.** The local branch pushes `MinPlayDurationSeconds` into all three aggregates at the SQL level; `GetTracearrPlaybackStatsAsync` counted every history row as a play. So the same library reads as more-watched purely because Tracearr is enabled, and a false start keeps an item out of the Morgue. Measured: **102 of 847 sessions (12%) are under the 120s default.** Fixed — applied per row on `durationMs`. | `TracearrService.cs:445` (pre-fix) |
 | 27 | **`weeksBack` is not a Tracearr parameter.** `history` takes `startDate`/`endDate`/`timezone`; unknown keys are ignored, not rejected. So the Morgue aggregate walked *all* history while asking for 52 weeks, and the Guestbook's timeframe dropdown never narrowed anything. Fails **open** with a 200, unlike findings 1/24/25. | `TracearrService.cs:135`, `:158` (pre-fix) |
 
@@ -703,6 +704,75 @@ fired at the live server and returns 16 rows, all inside the requested window
 
 **Done when:** a debounced keystroke issues no new SQL inside the TTL window,
 and `limit=10` no longer walks every series.
+
+#### Phase 4 results — **complete (2026-07-30)**
+
+- **Item 15 done.** `PlaybackStatsProvider` is the one place the media tabs get
+  aggregates from, and it returns all four together as a `PlaybackStats` —
+  including the history floor, which the controller used to compute separately.
+  The caching lives in a separate `TtlCache<T>` (60s) rather than inside the
+  provider, for two reasons: the provider reaches for `Plugin.Instance` and so
+  cannot be exercised without a Jellyfin server, and the *cache* is what has to
+  be the singleton. Registration reflects that — `TtlCache<PlaybackStats>` is a
+  singleton, `PlaybackStatsProvider` is scoped, because `AddHttpClient` makes
+  `TracearrService` transient and holding a transient inside a singleton would
+  pin one `HttpClient` forever and defeat the factory's handler rotation.
+  The TTL key is a signature of `EnableTracearr` + `MinPlayDurationSeconds` +
+  `TracearrUrl`, so changing engine or threshold is a miss rather than something
+  `Invalidate` has to remember to catch. `Invalidate` is called on Condemn,
+  Pardon and LastRites.
+- **Item 16 done, by a different route than the plan proposed.** "Filter and sort
+  before the mapping" only half-works here: the Morgue's `PlayCount` test and all
+  three sorts depend on values the mapping produces, and the Chapel's and
+  Sanctuary's header totals are sums over *every* mapped row, so mapping only the
+  top N would change what the header reports. What was actually costing the time
+  was the per-series `GetRecursiveChildren` walk — one library walk per row
+  mapped, so a 500-series library did 500 walks to render ten rows, on every
+  keystroke. That is now **one** query for all episodes, grouped by `SeriesId`
+  and built at most once per request, so per-series work is a dictionary lookup.
+  The age test *is* applied before the mapping, since it reads straight off the
+  item. The floor gate deliberately stays after it: items it withholds still have
+  to be counted for the banner's disclosure, and that count is of zero-play
+  candidates, which is not known until the mapping has run.
+- **Item 17 done** — and now free: the episode index is built from a query with
+  `IncludeItemTypes = [Episode]`, so membership is by kind rather than by the
+  `Path != null` test that also admitted seasons and any other pathless child.
+  No `GetRecursiveChildren` call remains in the service.
+- **Finding 29 fixed here** (below).
+- Evidence: `tests/harness/dotnet/ttlcache` — 12 checks over `TtlCache<T>` from
+  the built assembly, with an injected clock so the TTL is crossed without
+  sleeping and a factory that counts its own calls (one call = one full set of
+  aggregate queries). Covers the done-when directly: ten reads inside the window
+  load once, 59s is still cached and 61s is not, a signature change is a miss,
+  `Invalidate` forces a reload inside the window, and eight concurrent readers
+  collapse to a single load.
+
+**Caveat on the done-when.** "No new SQL inside the TTL window" is verified at the
+cache, not at the database — nothing here observes SQLite. The claim rests on the
+cache running the factory exactly once per window plus the fact that the factory
+is the only remaining caller of the repository aggregates. `limit=10` no longer
+walking every series is verified structurally (no `GetRecursiveChildren` remains,
+one episode query replaces it), not by measurement against a real library.
+
+### Finding 29 (P1) — the Chapel and Sanctuary read Time Played from the local database whatever the engine
+
+`GetPurgatoryItems` and `GetLivingItems` each called
+`_repository.GetItemPlayDurations(...)` directly, outside the engine branch that
+the other three aggregates went through. Two consequences with Tracearr enabled:
+
+1. **A single row mixed engines** — Plays, Reach and Last Breath came from
+   Tracearr while Time Played came from Playback Reporting. With D2 also missing
+   on the Tracearr side (finding 28) the two were not even filtered alike.
+2. **With no Playback Reporting database at all, both tabs failed.** The
+   `File.Exists` guard lived in the local branch of `GetPlaybackStatsAsync`, so
+   the Tracearr path never reached it and the repository call threw — a 500 on
+   the Chapel and Sanctuary for a setup that is supposed to be supported.
+
+Found while extracting the provider, which is also what fixes it: `PlaybackStats`
+carries all four aggregates from one engine, and `GetTracearrPlaybackStatsAsync`
+now builds `playDurations` by summing `durationMs` for the rows that pass the
+threshold. Same class as finding 28 — a second implementation that quietly
+skipped a rule the first one applied.
 
 ### Phase 5 — Structure
 
