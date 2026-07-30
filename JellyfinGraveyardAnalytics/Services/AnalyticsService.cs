@@ -41,12 +41,17 @@ namespace JellyfinGraveyardAnalytics.Services
 
         /// <summary>
         /// The Morgue: strictly zero-play items that have been in the library long enough
-        /// for that to mean neglect (D1). Optionally widened to barely-touched rows, which
-        /// are otherwise visible nowhere — the Sanctuary sorts by vitality descending.
+        /// for that to mean neglect (D1), and that playback history can actually speak to.
+        /// Optionally widened to barely-touched rows, which are otherwise visible nowhere —
+        /// the Sanctuary sorts by vitality descending.
         /// </summary>
         /// <param name="historyFloorUtc">
-        /// Oldest playback activity on record, used to clamp the grace period to the history
-        /// that actually exists. Null when there is no history at all.
+        /// Oldest playback activity on record. Items added before it are withheld unless
+        /// <paramref name="includeUnverifiable"/> is set. Null when there is no history.
+        /// </param>
+        /// <param name="includeUnverifiable">
+        /// Include candidates predating playback history. They cannot be confirmed unwatched,
+        /// so this is opt-in: the list feeds Condemn and then deletion.
         /// </param>
         public JellyfinGraveyardAnalytics.Models.LeastWatchedResponse GetLeastWatchedItems(
           string mediaType,
@@ -56,33 +61,34 @@ namespace JellyfinGraveyardAnalytics.Services
           Dictionary<string, HashSet<string>> itemViewers,
           Dictionary<string, DateTime> lastPlayedDates,
           bool includeBarelyTouched = false,
-          DateTime? historyFloorUtc = null)
+          DateTime? historyFloorUtc = null,
+          bool includeUnverifiable = false)
         {
             var now = DateTime.UtcNow;
-            var configuredGrace = _config.MorgueGraceDays;
+            var graceDays = _config.MorgueGraceDays;
+            var cutoff = now.AddDays(-graceDays);
 
-            // Coverage is what history can actually speak to. D1 clamps the grace period to
-            // it so the view never claims a 180-day judgement on a 20-day-old database.
+            // Floor gate, replacing D1's grace clamp. An item added before playback history
+            // begins reads as zero-play whether it was loved or ignored, so by default it is
+            // withheld rather than clamped into the list: shrinking the grace period to match
+            // short coverage made the age test *easier* and admitted more of those items, the
+            // opposite of what the clamp was for. Opt in to see them.
             int coverageDays = historyFloorUtc.HasValue
                 ? (int)Math.Max(0, Math.Floor((now - historyFloorUtc.Value).TotalDays))
                 : 0;
 
-            int effectiveGrace = Math.Min(configuredGrace, coverageDays);
-            var cutoff = now.AddDays(-effectiveGrace);
-
-            // No history at all means no item can be shown to be unwatched. Returning the
-            // whole library here would be the exact false-positive flood D1's clamp exists
-            // to prevent, so the view stays empty and the banner explains why.
-            if (!historyFloorUtc.HasValue)
+            // With no history nothing is verifiable, so only the explicit opt-in shows anything.
+            if (!historyFloorUtc.HasValue && !includeUnverifiable)
             {
                 return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
                 {
                     Items = new List<JellyfinGraveyardAnalytics.Models.LeastWatchedItem>(),
                     TotalWastedSize = FormatBytes(0),
                     CoverageDays = 0,
-                    EffectiveGraceDays = 0,
-                    ConfiguredGraceDays = configuredGrace,
-                    UnverifiableItemCount = 0
+                    GraceDays = graceDays,
+                    IncludingUnverifiable = false,
+                    UnverifiableCandidateCount = 0,
+                    HistoryFloorUtc = null
                 };
             }
 
@@ -166,23 +172,28 @@ namespace JellyfinGraveyardAnalytics.Services
             .Where(x => x != null)
             .ToList();
 
-            // D1: zero plays, aged past the (clamped) grace period. "Barely touched" widens
-            // the play test only -- the age test always applies.
+            // Zero plays, aged past the grace period. "Barely touched" widens the play test
+            // only -- the age test and the floor gate always apply.
             int playCeiling = includeBarelyTouched ? BarelyTouchedPlayCeiling : 0;
 
-            var morgueItems = mappedItems
+            var morgueCandidates = mappedItems
                 .Where(x => x.PlayCount <= playCeiling)
                 .Where(x => x.DateAdded.HasValue && x.DateAdded.Value <= cutoff)
+                .ToList();
+
+            // Candidates history cannot speak to, counted whether or not they are shown so
+            // the banner can say what is being withheld.
+            bool IsUnverifiable(JellyfinGraveyardAnalytics.Models.LeastWatchedItem x) =>
+                !historyFloorUtc.HasValue
+                || (x.DateAdded.HasValue && x.DateAdded.Value < historyFloorUtc.Value);
+
+            int unverifiableCandidates = morgueCandidates.Count(IsUnverifiable);
+
+            var morgueItems = (includeUnverifiable ? morgueCandidates : morgueCandidates.Where(x => !IsUnverifiable(x)))
                 .OrderByDescending(x => x.Size)
                 .ThenBy(x => x.PlayCount)
                 .Take(limit)
                 .ToList();
-
-            // Items older than the history floor cannot be confirmed unwatched: the history
-            // does not reach them. They are shown, but counted so the UI can say so.
-            int unverifiable = historyFloorUtc.HasValue
-                ? morgueItems.Count(x => x.DateAdded.HasValue && x.DateAdded.Value < historyFloorUtc.Value)
-                : morgueItems.Count;
 
             return new JellyfinGraveyardAnalytics.Models.LeastWatchedResponse
             {
@@ -191,9 +202,10 @@ namespace JellyfinGraveyardAnalytics.Services
                 // Header and table now describe the same set (D1).
                 TotalWastedSize = FormatBytes(morgueItems.Sum(x => x.Size)),
                 CoverageDays = coverageDays,
-                EffectiveGraceDays = effectiveGrace,
-                ConfiguredGraceDays = configuredGrace,
-                UnverifiableItemCount = unverifiable
+                GraceDays = graceDays,
+                IncludingUnverifiable = includeUnverifiable,
+                UnverifiableCandidateCount = unverifiableCandidates,
+                HistoryFloorUtc = historyFloorUtc
             };
         }
 

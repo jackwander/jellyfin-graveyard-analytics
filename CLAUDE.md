@@ -16,9 +16,18 @@ run in order. Results and evidence for each finished phase are recorded in
 `PLAN.md` under a "Phase N results" heading — read those before reopening a
 finding.
 
-One finding changed on contact with reality: **finding 5's webhook auth bypass
+Two findings changed on contact with reality. **Finding 5's webhook auth bypass
 was struck in Phase 0** (empty query values bind to `null`, so the endpoint
-failed closed). The rest of finding 5 was real and is fixed.
+failed closed); the rest of finding 5 was real and is fixed. **D1's grace clamp
+was replaced by a floor gate** (decided 2026-07-30) after the clamp turned out to
+admit *more* unverifiable items the less history existed — see "D1 — RESOLVED" in
+`PLAN.md`. Findings 24-26 were added from live measurement against a real
+Tracearr server; **26 is open and blocks recommending the Tracearr engine for the
+Morgue.**
+
+A live Tracearr is reachable at `http://10.10.1.201:3000` (public API under
+`/api/v1/public`, Bearer key). Ask the user for a key when one is needed — do not
+store it in the repo.
 
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
 installed, so the plugin can be built but **not loaded** here. Runtime claims

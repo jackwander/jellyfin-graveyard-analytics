@@ -440,7 +440,39 @@ the unfiltered aggregates this setting exists to fix.
 Dashboard suites: **22/22** and **9/9**, now covering the coverage banner in all
 three states and the widened Morgue row.
 
-#### D1 — a contradiction found while implementing it, needs a decision
+#### D1 — RESOLVED: floor gate replaces the clamp *(decided 2026-07-30)*
+
+The clamp is **removed**. `MorgueGraceDays` is applied as configured, and a
+candidate must additionally have been added *after* playback history begins:
+
+```
+item is in the Morgue  <=>  PlayCount == 0
+                        AND DateCreated <= UtcNow - MorgueGraceDays
+                        AND DateCreated >= historyFloor      // unless opted in
+```
+
+Rationale: under a floor gate the clamp is redundant — an item added after the
+floor is by construction younger than coverage, so `min(grace, coverage)` almost
+never binds — and the clamp was actively harmful, admitting *more* unverifiable
+items the less history existed. The list feeds Condemn → Exorcise, which deletes
+files, so a false positive risks someone's favourite film while a false negative
+only costs disk. That asymmetry sets the default.
+
+The cost is explicit rather than hidden: on a young Playback Reporting database
+the default Morgue is sparse, because nothing added after the floor is yet
+`MorgueGraceDays` old. A second checkbox — *"Include unverifiable (older than
+history)"*, default off — shows the withheld set, and those rows are marked
+**"unverified — predates history"** individually, not just in the banner. The
+banner always states coverage, the grace period in force, and how many items are
+withheld or included.
+
+Response fields: `CoverageDays`, `GraceDays`, `UnverifiableCandidateCount`,
+`IncludingUnverifiable`, `HistoryFloorUtc` (the last so the UI can mark rows).
+`EffectiveGraceDays` / `ConfiguredGraceDays` / `UnverifiableItemCount` are gone
+with the clamp. Suites: **26/26** and **9/9**.
+
+<details>
+<summary>The contradiction that prompted the change (kept for the record)</summary>
 
 `effectiveGrace = min(MorgueGraceDays, coverageDays)` is implemented as locked,
 but **the formula works against its own stated purpose** and I did not want to
@@ -466,8 +498,41 @@ Two mitigations are in place, neither of which is the missing rule:
 The rule that would actually match D1's rationale is a floor gate —
 `DateCreated >= historyFloor`, i.e. only judge items the history could have
 observed — either replacing the clamp or alongside it. That inverts which items
-appear on a young database, so it is a product call, not a refactor. **Flagged
-for decision; not implemented.**
+appear on a young database, so it is a product call, not a refactor.
+
+</details>
+
+### Finding 26 (P0) — the Tracearr Morgue aggregate is truncated far worse than the cap suggests
+
+Measured on the live server with a working key:
+
+```
+GET /api/v1/public/history?weeksBack=1   ->  meta {"total": 847, "page": 1, "pageSize": 25}
+```
+
+**847 sessions in a single week**, and `meta` carries **no `totalPages`** — only
+`total` / `page` / `pageSize`, so the page count must be derived (which
+`ReadTotalPages` already does). One week is 34 pages at the default page size;
+the aggregate requests **52 weeks**, so a full year is on the order of 1,700
+pages. The Phase 2 cap of 40 pages therefore covers roughly **1,000 rows — about
+ten days** — not the year the code asks for.
+
+This is worse than a performance issue. `GetTracearrPlaybackStatsAsync` feeds
+`playCounts`, so every item whose only plays fall outside those ~10 days reads as
+**zero-play** and lands in the Morgue as a deletion candidate. The Phase 2 cap
+made the truncation *visible* in the log, which is how this surfaced, but the
+underlying aggregate was already wrong before the cap existed — it would simply
+have walked all 1,700 pages on every keystroke instead.
+
+`pageSize` is honoured and accepts at least **100** (500 and 1000 return
+something unparseable, so the ceiling is between). Raising it to 100 cuts the
+year to ~440 requests — better, still not viable per keystroke.
+
+The real fix is not paging at all: Tracearr exposes `stats` and `users`
+endpoints, and an aggregate-side query would replace walking raw history. Phase 4
+(TTL cache) reduces the frequency but not the wrongness. **Recorded, not fixed —
+it needs an endpoint decision, and it should be settled before the Tracearr
+engine is recommended for the Morgue.**
 
 ### Phase 4 — Performance
 

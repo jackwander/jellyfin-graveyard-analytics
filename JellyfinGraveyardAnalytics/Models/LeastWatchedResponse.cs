@@ -19,20 +19,27 @@ namespace JellyfinGraveyardAnalytics.Models
         public int? CoverageDays { get; set; }
 
         /// <summary>
-        /// Grace period actually applied, after clamping to <see cref="CoverageDays"/>.
+        /// Grace period applied. No longer clamped to coverage — the floor gate replaced
+        /// that, so this is simply the configured value.
         /// </summary>
-        public int? EffectiveGraceDays { get; set; }
+        public int? GraceDays { get; set; }
 
         /// <summary>
-        /// Configured grace period before clamping, so the UI can say when the two differ.
+        /// Candidates added before playback history begins — items history cannot call
+        /// unwatched either way. Counted whether or not they are shown, so the UI can report
+        /// what is being withheld as well as what is included.
         /// </summary>
-        public int? ConfiguredGraceDays { get; set; }
+        public int? UnverifiableCandidateCount { get; set; }
 
         /// <summary>
-        /// How many returned rows were added to the library before playback history begins.
-        /// History does not reach back far enough to call those unwatched, so the UI flags
-        /// them instead of presenting them as confirmed dead weight.
+        /// Whether those unverifiable candidates are included in <see cref="Items"/>.
         /// </summary>
-        public int? UnverifiableItemCount { get; set; }
+        public bool IncludingUnverifiable { get; set; }
+
+        /// <summary>
+        /// Start of playback history, so the UI can mark individual rows that predate it.
+        /// Null when there is no history at all.
+        /// </summary>
+        public System.DateTime? HistoryFloorUtc { get; set; }
     }
 }

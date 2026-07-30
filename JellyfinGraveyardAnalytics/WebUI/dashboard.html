@@ -99,6 +99,10 @@
                         <input type="checkbox" id="includeBarelyTouched" style="margin-right: 6px; cursor: pointer;">
                         <label for="includeBarelyTouched" style="color:#aaa; cursor: pointer;">Include barely-touched (&le; 2 plays)</label>
                     </div>
+                    <div id="unverifiableFilter" style="display: none; align-items: center;">
+                        <input type="checkbox" id="includeUnverifiable" style="margin-right: 6px; cursor: pointer;">
+                        <label for="includeUnverifiable" style="color:#aaa; cursor: pointer;" title="These were added before playback history begins, so they read as unwatched whether or not they were watched.">Include unverifiable (older than history)</label>
+                    </div>
                 </div>
 
                 <div id="coverageBanner" style="display: none; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; color: #ccc; font-size: 0.9em;"></div>
@@ -383,6 +387,7 @@
                 mediaTopCard.style.display = 'none';
                 mediaFilters.style.display = 'none';
                 document.getElementById('barelyTouchedFilter').style.display = 'none';
+                document.getElementById('unverifiableFilter').style.display = 'none';
                 document.getElementById('coverageBanner').style.display = 'none';
                 mediaTableContainer.style.display = 'none';
                 morgueTableContainer.style.display = 'none';
@@ -427,6 +432,7 @@
                         document.getElementById('tabMorgue').classList.add('active-tab');
                         morgueTableContainer.style.display = 'block';
                         document.getElementById('barelyTouchedFilter').style.display = 'flex';
+                        document.getElementById('unverifiableFilter').style.display = 'flex';
                     } else if (tabName === 'chapel') {
                         document.getElementById('tabChapel').classList.add('active-tab');
                         mediaTableContainer.style.display = 'block';
@@ -634,18 +640,19 @@
                     }
 
                     var lines = [];
+                    var withheld = data.UnverifiableCandidateCount || 0;
 
                     if (data.CoverageDays === 0) {
-                        lines.push('No playback history is available yet, so nothing can be confirmed as unwatched. The Morgue stays empty until history accumulates.');
+                        lines.push('No playback history is available yet, so nothing can be confirmed as unwatched.');
                     } else {
-                        lines.push('History covers ' + data.CoverageDays + ' days — items added before that cannot be verified as unwatched.');
+                        lines.push('History covers ' + data.CoverageDays + ' days. Showing items with no plays that have been in the library at least ' + data.GraceDays + ' days.');
+                    }
 
-                        if (data.EffectiveGraceDays !== data.ConfiguredGraceDays) {
-                            lines.push('Grace period reduced from ' + data.ConfiguredGraceDays + ' to ' + data.EffectiveGraceDays + ' days to match the history available.');
-                        }
-
-                        if (data.UnverifiableItemCount > 0) {
-                            lines.push(data.UnverifiableItemCount + ' of the rows below predate that history.');
+                    if (withheld > 0) {
+                        if (data.IncludingUnverifiable) {
+                            lines.push(withheld + ' shown row(s) predate that history and are marked "unverified" — they read as unwatched whether or not they were watched.');
+                        } else {
+                            lines.push(withheld + ' further item(s) were added before history begins and are withheld, because they cannot be told apart from watched ones. Tick "Include unverifiable" to review them.');
                         }
                     }
 
@@ -656,7 +663,7 @@
                     banner.style.display = 'block';
                 };
 
-                window.renderMediaTable = function(items) {
+                window.renderMediaTable = function(items, context) {
                     var isMorgue = window.currentTab === 'morgue';
                     var tbody = isMorgue ? document.getElementById('morgueTableBody') : document.getElementById('leastWatchedTableBody');
 
@@ -712,6 +719,14 @@
                             tr.appendChild(td('padding: 15px 10px; color: ' + playCountColor + ';', item.PlayCount));
                         }
 
+                        // A row older than playback history cannot be confirmed unwatched, so
+                        // say so on the row and not only in the banner.
+                        if (isMorgue && context && context.HistoryFloorUtc && item.DateAdded
+                            && new Date(item.DateAdded) < new Date(context.HistoryFloorUtc)) {
+                            nameCell.appendChild(document.createElement('br'));
+                            nameCell.appendChild(span('font-size:0.75em; color:#ff9800; text-transform:uppercase; letter-spacing:1px;', 'unverified — predates history'));
+                        }
+
                         // The extra stats for Living/Chapel
                         if (!isMorgue) {
                             tr.appendChild(td('padding: 15px 10px; color: ' + playCountColor + ';', item.PlayCount));
@@ -765,7 +780,9 @@
                         if (window.currentTab === 'living') endpoint = 'GraveyardAnalytics/Living?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
                         else if (window.currentTab === 'morgue') {
                             var barely = document.getElementById('includeBarelyTouched').checked;
-                            endpoint = 'GraveyardAnalytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText + '&includeBarelyTouched=' + barely;
+                            var unverifiable = document.getElementById('includeUnverifiable').checked;
+                            endpoint = 'GraveyardAnalytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText
+                                + '&includeBarelyTouched=' + barely + '&includeUnverifiable=' + unverifiable;
                         }
                         else endpoint = 'GraveyardAnalytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
 
@@ -774,7 +791,7 @@
                             document.getElementById('totalWastedTitle').innerText = headerLabel;
                             document.getElementById('totalWasteValue').innerText = data.TotalWastedSize;
                             window.renderCoverageBanner(data);
-                            window.renderMediaTable(data.Items);
+                            window.renderMediaTable(data.Items, data);
                         });
                     }
                 };
@@ -787,6 +804,7 @@
                 });
 
                 document.getElementById('includeBarelyTouched').addEventListener('change', window.fetchAndRenderTable);
+                document.getElementById('includeUnverifiable').addEventListener('change', window.fetchAndRenderTable);
                 document.getElementById('mediaTypeFilter').addEventListener('change', window.fetchAndRenderTable);
                 document.getElementById('limitFilter').addEventListener('change', window.fetchAndRenderTable);
                 document.getElementById('visitorEndDate').addEventListener('change', window.fetchAndRenderTable);

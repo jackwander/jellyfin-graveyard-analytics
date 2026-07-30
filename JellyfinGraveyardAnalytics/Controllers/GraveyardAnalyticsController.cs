@@ -68,8 +68,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         /// <summary>
-        /// How far back the Tracearr history aggregate reaches. Doubles as the coverage
-        /// bound for the Morgue grace clamp on that engine (D1).
+        /// How far back the Tracearr history aggregate reaches. Doubles as the history
+        /// floor on that engine, since the aggregate cannot see past the window we request.
         /// </summary>
         private const int TracearrHistoryWeeks = 52;
 
@@ -122,7 +122,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
         }
 
         [HttpGet("LeastWatched")]
-        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, [FromQuery] bool includeBarelyTouched = false, CancellationToken cancellationToken = default)
+        public async Task<IActionResult> GetLeastWatched([FromQuery] string mediaType, [FromQuery] string? mediaSearch, [FromQuery] int limit = 20, [FromQuery] bool includeBarelyTouched = false, [FromQuery] bool includeUnverifiable = false, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -136,7 +136,8 @@ namespace JellyfinGraveyardAnalytics.Controllers
                     itemViewers,
                     lastPlayedDates,
                     includeBarelyTouched,
-                    GetHistoryFloorUtc()));
+                    GetHistoryFloorUtc(),
+                    includeUnverifiable));
             }
             catch (PlaybackDataUnavailableException ex)
             {

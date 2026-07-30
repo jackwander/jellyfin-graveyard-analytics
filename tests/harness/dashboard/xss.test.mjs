@@ -142,17 +142,20 @@ check('no alert() fired anywhere', alerts === 0, `alerts=${alerts}`);
 check('document contains zero injected <img>', doc.querySelectorAll('img').length === 0,
   `imgs=${doc.querySelectorAll('img').length}`);
 
-// ---- 6. Phase 3: coverage banner reflects what history can support ----
+// ---- 6. Coverage banner + floor gate (D1 as decided: gate, not clamp) ----
 const bannerCases = [
-  { name: 'no history -> empty-morgue explanation',
-    data: { CoverageDays: 0, EffectiveGraceDays: 0, ConfiguredGraceDays: 180, UnverifiableItemCount: 0, Items: [] },
+  { name: 'no history at all',
+    data: { CoverageDays: 0, GraceDays: 180, UnverifiableCandidateCount: 0, IncludingUnverifiable: false, HistoryFloorUtc: null },
     expect: /No playback history is available yet/ },
-  { name: 'clamped grace is disclosed',
-    data: { CoverageDays: 20, EffectiveGraceDays: 20, ConfiguredGraceDays: 180, UnverifiableItemCount: 3, Items: [] },
-    expect: /History covers 20 days.*Grace period reduced from 180 to 20 days.*3 of the rows below predate/s },
-  { name: 'full coverage mentions no reduction',
-    data: { CoverageDays: 400, EffectiveGraceDays: 180, ConfiguredGraceDays: 180, UnverifiableItemCount: 0, Items: [] },
-    expect: /^History covers 400 days/ },
+  { name: 'withheld items are disclosed with the way to see them',
+    data: { CoverageDays: 20, GraceDays: 180, UnverifiableCandidateCount: 7, IncludingUnverifiable: false, HistoryFloorUtc: '2026-07-10T00:00:00Z' },
+    expect: /History covers 20 days.*at least 180 days.*7 further item\(s\).*withheld.*Include unverifiable/s },
+  { name: 'opted in: shown rows are called unverified',
+    data: { CoverageDays: 20, GraceDays: 180, UnverifiableCandidateCount: 7, IncludingUnverifiable: true, HistoryFloorUtc: '2026-07-10T00:00:00Z' },
+    expect: /7 shown row\(s\) predate that history and are marked "unverified"/ },
+  { name: 'full coverage, nothing withheld -> one line only',
+    data: { CoverageDays: 400, GraceDays: 180, UnverifiableCandidateCount: 0, IncludingUnverifiable: false, HistoryFloorUtc: '2025-06-01T00:00:00Z' },
+    expect: /^History covers 400 days\. Showing items with no plays that have been in the library at least 180 days\.$/ },
 ];
 window.currentTab = 'morgue';
 for (const c of bannerCases) {
@@ -163,11 +166,28 @@ for (const c of bannerCases) {
     JSON.stringify(banner.textContent));
 }
 window.currentTab = 'chapel';
-window.renderCoverageBanner({ CoverageDays: 20, EffectiveGraceDays: 20, ConfiguredGraceDays: 180 });
+window.renderCoverageBanner({ CoverageDays: 20, GraceDays: 180 });
 check('banner: hidden outside the Morgue',
   doc.getElementById('coverageBanner').style.display === 'none', '');
-check('banner: no markup injected from data',
-  doc.getElementById('coverageBanner').querySelectorAll('*').length <= 4, '');
+
+// ---- 7. Per-row "unverified" marker ----
+const floor = { HistoryFloorUtc: '2026-01-01T00:00:00Z' };
+window.currentTab = 'morgue';
+window.renderMediaTable([{ ...item, DateAdded: '2024-05-01T00:00:00Z' }], floor);
+let mBody = doc.getElementById('morgueTableBody');
+check('row: item predating history is marked unverified',
+  /unverified — predates history/.test(mBody.textContent), JSON.stringify(mBody.textContent.slice(0, 90)));
+check('row: marker is text, not markup (title still safe)',
+  mBody.querySelectorAll('img').length === 0 && mBody.querySelector('a').textContent === PAYLOAD, '');
+
+window.renderMediaTable([{ ...item, DateAdded: '2026-06-01T00:00:00Z' }], floor);
+mBody = doc.getElementById('morgueTableBody');
+check('row: item inside history is NOT marked',
+  !/unverified/.test(mBody.textContent), JSON.stringify(mBody.textContent.slice(0, 90)));
+
+window.renderMediaTable([{ ...item, DateAdded: '2024-05-01T00:00:00Z' }]);
+check('row: no context -> no marker, no crash',
+  !/unverified/.test(doc.getElementById('morgueTableBody').textContent), '');
 
 let failed = 0;
 for (const r of results) {
