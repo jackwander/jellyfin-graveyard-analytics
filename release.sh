@@ -20,14 +20,25 @@ set -euo pipefail
 usage() {
   cat >&2 <<'EOF'
 Usage: ./release.sh vX.X.X.X [--changelog "text"] [--dry-run]
+       ./release.sh vX.X.X.X --changelog "text" --publish [--yes]
 
-  vX.X.X.X     Four-part version. The leading v is optional and is stripped for
-               the version fields; it is kept for the Releases/ directory and the
-               git tag the sourceUrl points at.
-  --changelog  Release notes for manifest.json. If omitted and this version is
-               already in the manifest, its existing changelog is kept.
-  --dry-run    Build, zip and compute the checksum, but leave manifest.json,
-               the csproj and build.yaml untouched.
+  vX.X.X.X      Four-part version. The leading v is optional and is stripped for
+                the version fields; it is kept for the Releases/ directory and the
+                git tag the sourceUrl points at.
+  --changelog   Release notes for manifest.json. If omitted and this version is
+                already in the manifest, its existing changelog is kept.
+  --dry-run     Build, zip and compute the checksum, but leave manifest.json,
+                the csproj and build.yaml untouched.
+  --publish     Also commit the three stamped files, tag, and push both — which
+                is what triggers .github/workflows/release.yml to build the same
+                zip, re-check its checksum against the manifest, and publish the
+                GitHub release. Refuses unless the tree is clean apart from those
+                three files, HEAD is on master, and the tag is unused locally and
+                on the remote.
+  --yes         Do not ask for confirmation before pushing. Required when stdin
+                is not a terminal.
+  --skip-tests  Skip the test run. Only for re-cutting an artifact you have
+                already tested; the release workflow runs them again regardless.
 EOF
   exit 1
 }
@@ -41,6 +52,11 @@ PROJECT_DIR="JellyfinGraveyardAnalytics"
 CSPROJ="$PROJECT_DIR/JellyfinGraveyardAnalyticsPlugin.csproj"
 BUILD_YAML="$PROJECT_DIR/build.yaml"
 MANIFEST="manifest.json"
+TEST_PROJECT="tests/GraveyardAnalytics.Tests/GraveyardAnalytics.Tests.csproj"
+# manifest.json is served from this branch and is what every installed client polls, so a
+# release cut anywhere else would tag code the catalogue never points at.
+RELEASE_BRANCH="master"
+REMOTE="origin"
 PUBLISH_DIR="$PROJECT_DIR/bin/Release/net9.0/publish"
 REPO_URL="https://github.com/jackwander/jellyfin-graveyard-analytics"
 
@@ -56,6 +72,9 @@ shift
 CHANGELOG=""
 CHANGELOG_SET=0
 DRY_RUN=0
+PUBLISH=0
+ASSUME_YES=0
+SKIP_TESTS=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,9 +85,24 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --publish) PUBLISH=1; shift ;;
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --skip-tests) SKIP_TESTS=1; shift ;;
     *) echo "❌ Unknown argument: $1" >&2; usage ;;
   esac
 done
+
+if [ "$DRY_RUN" -eq 1 ] && [ "$PUBLISH" -eq 1 ]; then
+  echo "❌ --dry-run and --publish contradict each other." >&2
+  exit 1
+fi
+
+# Prompting is the default because the last step is a push, and a pushed tag cannot be
+# taken back in any way that helps: clients poll the manifest on master.
+if [ "$PUBLISH" -eq 1 ] && [ "$ASSUME_YES" -eq 0 ] && [ ! -t 0 ]; then
+  echo "❌ --publish needs a terminal to confirm at, or --yes to say you meant it." >&2
+  exit 1
+fi
 
 # --- version ---------------------------------------------------------------------
 VERSION="${RAW_VERSION#v}"
@@ -113,6 +147,60 @@ esac
 
 echo "📦 Release $TAG  (targetAbi $TARGET_ABI)"
 [ "$DRY_RUN" -eq 1 ] && echo "   dry run — no files will be rewritten"
+
+# --- pre-flight for --publish ------------------------------------------------------
+# All of it runs before the first file is rewritten, so a refusal leaves the tree exactly
+# as it was found and there is nothing to undo by hand.
+if [ "$PUBLISH" -eq 1 ]; then
+  BRANCH="$(git rev-parse --abbrev-ref HEAD)"
+  if [ "$BRANCH" != "$RELEASE_BRANCH" ]; then
+    echo "❌ On '$BRANCH', but a release has to be cut from '$RELEASE_BRANCH' — that is the" >&2
+    echo "   branch $MANIFEST is served from." >&2
+    exit 1
+  fi
+
+  # Checked first, because it is the one that cannot be recovered from. A tag already on
+  # the remote has a GitHub release and a checksum behind it, and installed clients have
+  # that file; moving it breaks every install that trusted the old checksum.
+  if git ls-remote --tags --exit-code "$REMOTE" "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "❌ $REMOTE already has tag $TAG. That version is published; pick a new one." >&2
+    exit 1
+  fi
+
+  # Only the three stamped files may differ. Anything else would ship unreviewed under a
+  # "Release" message. Untracked files are ignored: test-release.sh lives here permanently
+  # and is deliberately not in the repository.
+  DIRTY="$(git status --porcelain --untracked-files=no \
+    | awk '{ print $NF }' \
+    | grep -v -e "^$CSPROJ$" -e "^$BUILD_YAML$" -e "^$MANIFEST$" || true)"
+  if [ -n "$DIRTY" ]; then
+    echo "❌ These files are modified and are not part of a release commit:" >&2
+    printf '   %s\n' $DIRTY >&2
+    echo "   Commit or stash them first." >&2
+    exit 1
+  fi
+
+  if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+    EXISTING="$(git rev-parse "refs/tags/$TAG")"
+    if [ "$EXISTING" != "$(git rev-parse HEAD)" ]; then
+      echo "❌ Tag $TAG already exists locally and points at ${EXISTING:0:8}, not HEAD." >&2
+      echo "   Delete it or use a new version number." >&2
+      exit 1
+    fi
+    echo "ℹ️  Tag $TAG already exists here and matches HEAD; it will be reused."
+  fi
+fi
+
+# --- tests -------------------------------------------------------------------------
+# The release workflow runs these too, but it runs them after the tag exists — and a tag is
+# the one thing here that cannot be withdrawn cleanly. Failing before the stamp is cheaper
+# than failing after the push.
+if [ "$SKIP_TESTS" -eq 0 ]; then
+  echo "🧪 Testing..."
+  dotnet test "$TEST_PROJECT" -c Release -p:TreatWarningsAsErrors=true --nologo --verbosity quiet
+else
+  echo "⚠️  Skipping tests (--skip-tests)."
+fi
 
 # --- stamp the version -----------------------------------------------------------
 if [ "$DRY_RUN" -eq 0 ]; then
@@ -217,11 +305,76 @@ echo "✅ Patched $MANIFEST (checksum + timestamp $TIMESTAMP)"
 echo "---"
 echo "🎉 $TAG is ready."
 echo "📍 $DEST_DIR/$ZIP_NAME"
+
+if [ "$PUBLISH" -eq 0 ]; then
+  echo ""
+  echo "Next — or re-run with --publish to have this do it:"
+  echo "  git add $CSPROJ $BUILD_YAML $MANIFEST"
+  echo "  git commit -m \"Release $TAG\""
+  echo "  git tag $TAG"
+  echo "  git push $REMOTE $RELEASE_BRANCH && git push $REMOTE $TAG"
+  echo ""
+  echo "The tag push is what publishes: release.yml rebuilds this exact zip, re-checks its"
+  echo "checksum against $MANIFEST, and attaches it to the GitHub release. Nothing is"
+  echo "uploaded by hand — the build is reproducible, so CI's zip is byte-for-byte this one."
+  echo "---"
+  exit 0
+fi
+
+# --- publish -----------------------------------------------------------------------
 echo ""
-echo "Next:"
-echo "  git add $CSPROJ $BUILD_YAML $MANIFEST"
-echo "  git commit -m \"Release $TAG\""
-echo "  git tag $TAG && git push --tags"
-echo "  Upload $DEST_DIR/$ZIP_NAME to the $TAG release — the sourceUrl in the"
-echo "  manifest already points at it, so the checksum only matches that file."
+git add "$CSPROJ" "$BUILD_YAML" "$MANIFEST"
+
+# Re-checked after staging, not just before: the stamp is the only thing that should have
+# changed the tree since the pre-flight.
+STAGED="$(git diff --cached --name-only)"
+UNEXPECTED="$(printf '%s\n' "$STAGED" \
+  | grep -v -e "^$CSPROJ$" -e "^$BUILD_YAML$" -e "^$MANIFEST$" -e '^$' || true)"
+if [ -n "$UNEXPECTED" ]; then
+  echo "❌ Refusing to commit: something other than the three stamped files is staged:" >&2
+  printf '   %s\n' $UNEXPECTED >&2
+  exit 1
+fi
+
+if [ -z "$STAGED" ]; then
+  echo "ℹ️  Nothing to commit — the three files already say $VERSION."
+else
+  git commit -q -m "Release $TAG"
+  echo "✅ Committed Release $TAG"
+fi
+
+if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+  git tag "$TAG"
+  echo "✅ Tagged $TAG"
+fi
+
+AHEAD="$(git rev-list --count "$REMOTE/$RELEASE_BRANCH..$RELEASE_BRANCH" 2>/dev/null || echo '?')"
+echo ""
+echo "About to push to $REMOTE:"
+echo "  $RELEASE_BRANCH → $(git rev-parse --short HEAD)  ($AHEAD commit(s) ahead)"
+echo "  $TAG → publishes the GitHub release and the manifest entry clients poll"
+echo ""
+
+if [ "$ASSUME_YES" -eq 0 ]; then
+  printf 'Type the version to confirm (%s): ' "$VERSION"
+  read -r CONFIRM
+  if [ "$CONFIRM" != "$VERSION" ]; then
+    echo "❌ Not confirmed. Nothing pushed — the commit and tag are local, so 'git reset'" >&2
+    echo "   and 'git tag -d $TAG' undo them." >&2
+    exit 1
+  fi
+fi
+
+# Branch first. If the tag arrived first, release.yml would start building a commit the
+# remote branch did not have yet, and its manifest check would read the old file.
+git push "$REMOTE" "$RELEASE_BRANCH"
+echo "✅ Pushed $RELEASE_BRANCH"
+git push "$REMOTE" "$TAG"
+echo "✅ Pushed $TAG"
+
+echo "---"
+echo "🚀 $TAG published. release.yml is now building it:"
+echo "   $REPO_URL/actions"
+echo "   It re-checks the checksum against $MANIFEST and fails the release rather than"
+echo "   attaching a zip that disagrees with what clients will verify."
 echo "---"

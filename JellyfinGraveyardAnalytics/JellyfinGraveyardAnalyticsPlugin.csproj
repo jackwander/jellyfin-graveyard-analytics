@@ -23,6 +23,38 @@
     <Company>jackwander</Company>
   </PropertyGroup>
 
+  <!--
+    Reproducibility. release.yml commits manifest.json with an MD5 of the zip and then
+    rebuilds that zip in CI, refusing to publish if the two disagree — so the build has to
+    be a function of the source and nothing else. Three inputs broke that, none of them
+    visible without comparing bytes:
+
+    - The SDK appends the git commit to AssemblyInformationalVersion, and SourceLink (on by
+      default since .NET 8) writes the same commit into the PDB. That made the design
+      *circular*: the checksum goes into a commit, the commit changes the SHA, the SHA
+      changes the DLL, the DLL changes the checksum. EnableSourceControlManagerQueries
+      stops the SDK consulting git at all, which is what closes it.
+    - The debug directory records the absolute path of the PDB —
+      /private/var/www/... on the maintainer's machine, /home/runner/... on CI. PathMap
+      rewrites it to a fixed stand-in.
+    - Zip entry mtimes, handled in release.sh.
+
+    DebugType is `embedded` rather than `none` so the PDB travels inside the DLL and a
+    stack trace in a user's Jellyfin log still carries line numbers; only the two
+    assemblies ship either way.
+
+    Verified: the same source builds byte-identical from two different directories, with
+    and without a .git present, and across an intervening commit. Remove any of these and
+    the release workflow starts failing its own checksum gate.
+  -->
+  <PropertyGroup>
+    <Deterministic>true</Deterministic>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <EnableSourceControlManagerQueries>false</EnableSourceControlManagerQueries>
+    <DebugType>embedded</DebugType>
+    <PathMap>$(MSBuildProjectDirectory)=/src</PathMap>
+  </PropertyGroup>
+
   <PropertyGroup>
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisLevel>latest</AnalysisLevel>

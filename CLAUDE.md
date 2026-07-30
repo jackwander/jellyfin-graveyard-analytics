@@ -152,9 +152,25 @@ the native `runtimes/` tree.
   every return to the page. Every fetch needs a `.catch` that renders the failure,
   and a response is only rendered if its `state.request` generation is still
   current.
-- Release flow is `./release.sh vX.X.X.X --changelog "…"`. It stamps the version
-  into the csproj and `build.yaml`, publishes, zips, and patches `manifest.json`
-  (checksum + UTC timestamp) itself — no hand-editing. `--dry-run` builds and
-  checksums without rewriting anything. Then commit, tag, and let
-  `.github/workflows/release.yml` attach the zip; it refuses a tag that disagrees
-  with the csproj or whose checksum does not match the committed manifest.
+- Release flow is `./release.sh vX.X.X.X --changelog "…" --publish`. It runs the
+  suite, stamps the version into the csproj and `build.yaml`, publishes, zips,
+  patches `manifest.json` (checksum + UTC timestamp), then commits those three
+  files, tags, and pushes branch and tag — no hand-editing, no manual upload. The
+  tag push is what publishes: `.github/workflows/release.yml` rebuilds the same
+  zip, refuses a tag disagreeing with the csproj or a checksum disagreeing with
+  the committed manifest, and attaches it. `--dry-run` rehearses; omitting
+  `--publish` stops after the manifest patch and prints the git commands.
+  `--publish` refuses unless HEAD is on `master`, the tree is clean apart from
+  those three files, and the tag is unused locally and on the remote, then asks
+  you to type the version.
+- **The release artifact must stay byte-reproducible**, or `release.yml`'s
+  checksum gate can never pass — the manifest is committed *before* CI rebuilds
+  the zip. Three things guarantee it and all three are load-bearing: `release.sh`
+  flattens zip mtimes to the 1980 epoch and passes `-X`; the csproj sets
+  `EnableSourceControlManagerQueries=false` and
+  `IncludeSourceRevisionInInformationalVersion=false` (otherwise the commit SHA
+  lands in the DLL, which is *circular* — the checksum goes into the commit that
+  changes the SHA); and `PathMap` normalizes the absolute PDB path, which differs
+  between a dev machine and CI. Verified byte-identical across two directories,
+  with and without `.git`, across an intervening commit, and between macOS and
+  `ubuntu:22.04`.

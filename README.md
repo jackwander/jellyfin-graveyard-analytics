@@ -128,14 +128,24 @@ the root is what the old instructions said, and it fails with `MSB1003`.)
 ### Cutting a release
 
 ```bash
-./release.sh v1.2.0.0 --changelog "What changed."
+./release.sh v1.2.0.0 --changelog "What changed." --publish
 ```
 
-Stamps the version into the csproj and `build.yaml`, publishes, zips the two assemblies
-into `Releases/v1.2.0.0/`, and patches `manifest.json` with the real MD5 and a UTC
-timestamp. `--dry-run` does everything except rewrite those files. Upload the resulting
-zip to the matching GitHub release — the `sourceUrl` in the manifest points at it, and the
-checksum only matches that exact file.
+One command, from a clean `master`. It runs the test suite, stamps the version into the
+csproj and `build.yaml`, publishes, zips the two assemblies into `Releases/v1.2.0.0/`,
+patches `manifest.json` with the real MD5 and a UTC timestamp, then commits those three
+files, tags, and pushes.
+
+Pushing the tag is what publishes. `.github/workflows/release.yml` rebuilds the same zip,
+refuses a tag that disagrees with the csproj or a checksum that disagrees with the
+committed manifest, and attaches the archive to the GitHub release. Nothing is uploaded by
+hand: the build is byte-reproducible, so CI's zip is exactly the one whose checksum went
+into the manifest.
+
+Before any of that it checks you are on `master`, that nothing but those three files is
+modified, and that the tag is not already published — then asks you to type the version
+back. `--dry-run` rehearses without rewriting a file; omitting `--publish` stops after the
+manifest patch and prints the git commands instead.
 
 ### Tests
 
