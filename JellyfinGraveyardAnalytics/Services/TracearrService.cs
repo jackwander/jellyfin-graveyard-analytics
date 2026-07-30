@@ -413,6 +413,14 @@ namespace JellyfinGraveyardAnalytics.Services
             var itemViewers = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             var lastPlayedDates = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
+            // D2's floor. The local engine pushes MinPlayDurationSeconds into all three of
+            // these aggregates at the SQL level; Tracearr has no equivalent filter, so it is
+            // applied here per row. Without it the same library reads as more-watched purely
+            // because the Tracearr engine is enabled, and a two-second false start counts as
+            // a play that keeps an item out of the Morgue.
+            var minPlaySeconds = Config.MinPlayDurationSeconds;
+            int belowThreshold = 0;
+
             int currentPage = 1;
             int totalPages = 1;
             bool truncated = false;
@@ -443,6 +451,15 @@ namespace JellyfinGraveyardAnalytics.Services
                         }
 
                         if (string.IsNullOrEmpty(itemId)) continue;
+
+                        // 1b. Apply the play threshold. durationMs is the elapsed session
+                        // time — the analog of Playback Reporting's PlayDuration — not the
+                        // item runtime, which is totalDurationMs.
+                        if (ReadInt64(item, "durationMs") / 1000 < minPlaySeconds)
+                        {
+                            belowThreshold++;
+                            continue;
+                        }
 
                         // 2. Tally Play Counts
                         if (!playCounts.ContainsKey(itemId)) playCounts[itemId] = 0;
@@ -494,6 +511,14 @@ namespace JellyfinGraveyardAnalytics.Services
                     totalPages,
                     windowStart,
                     windowEnd);
+            }
+
+            if (belowThreshold > 0)
+            {
+                _logger.LogDebug(
+                    "Discarded {Count} Tracearr session(s) shorter than the {Threshold}s play threshold.",
+                    belowThreshold,
+                    minPlaySeconds);
             }
 
             return (playCounts, itemViewers, lastPlayedDates);

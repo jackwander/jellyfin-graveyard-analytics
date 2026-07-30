@@ -99,6 +99,7 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | 24 | **`TestConnectionAsync` calls an endpoint that does not exist.** `GET /api/v1/public/system/status` → **404** on a live, healthy Tracearr. So the Settings tab's connection test can *never* succeed, and `PingTracearr` reports "Could not connect to Tracearr. Check your URL and API Key." even when the URL and key are perfect. Same class of bug as finding 1, missed by static reading because the endpoint name looks plausible. Confirmed real endpoints under `/api/v1/public/`: `history`, `users`, `stats`, `docs` (all 401 unauthenticated). Unauthenticated `GET /health` at the server root returns `{"status":"ok",...}`. | `TracearrService.cs:66` |
 | 25 | **`media/stale` does not exist either** — `GET /api/v1/public/media/stale` → 404. Both dead methods that Phase 2 deletes were built against an endpoint Tracearr does not serve, so they could never have worked. Strengthens item 8 from "dead code" to "dead *and* wrong". | `TracearrService.cs` (deleted methods) |
 | 26 | ~~Morgue aggregate truncated far worse than the cap suggests.~~ **Withdrawn** — the 847-sessions-per-week measurement it rested on was finding 27's ignored parameter returning all-time totals. A real week is 16. Its open question ("try `stats`/`users` before enlarging the cap") was answered: neither carries item identity, so `history` is the only possible source. Full write-up below. | — |
+| 28 | **D2's play threshold was never applied on the Tracearr engine.** The local branch pushes `MinPlayDurationSeconds` into all three aggregates at the SQL level; `GetTracearrPlaybackStatsAsync` counted every history row as a play. So the same library reads as more-watched purely because Tracearr is enabled, and a false start keeps an item out of the Morgue. Measured: **102 of 847 sessions (12%) are under the 120s default.** Fixed — applied per row on `durationMs`. | `TracearrService.cs:445` (pre-fix) |
 | 27 | **`weeksBack` is not a Tracearr parameter.** `history` takes `startDate`/`endDate`/`timezone`; unknown keys are ignored, not rejected. So the Morgue aggregate walked *all* history while asking for 52 weeks, and the Guestbook's timeframe dropdown never narrowed anything. Fails **open** with a 200, unlike findings 1/24/25. | `TracearrService.cs:135`, `:158` (pre-fix) |
 
 ### P1 — correctness / semantics
@@ -442,6 +443,14 @@ ghost.
   assembly, driving `MapSession` with the verbatim live row above, then firing
   the generated query at the real server (21 checks + 5 live). The jsdom
   `xss.test.mjs` was rewritten to the single response shape, 31/31.
+- **Finding 28 fixed here.** Closing item 7 meant reading both engines side by
+  side, which is what exposed it: the Tracearr branch never applied D2's play
+  threshold. It is applied per row now, on `durationMs` (elapsed session time —
+  `totalDurationMs` is the item runtime). Measured against the live server, 102
+  of 847 sessions (12%) are under the 120s default and had been counting as
+  plays. Untestable by the harnesses here — the aggregate reads
+  `Plugin.Instance.Configuration`, which needs a running Jellyfin — so this one
+  rests on the code and the row-level measurement, not on a harness. Phase 6.
 
 ### Phase 3 — Make the numbers correct
 
@@ -476,6 +485,12 @@ time (see the Phase 0 correction above).
   split is gone and the two unfiltered queries — last-played and durations — now
   filter too, which is what allowed `Plays 3 / Reach 0` and
   `Last Breath: yesterday / Plays 0`.
+  **Amended 2026-07-30:** "all four aggregates" was true of the *local* engine
+  only. The Tracearr branch of `GetPlaybackStatsAsync` bypasses the repository
+  entirely, so D2 had no effect at all when Tracearr was enabled — finding 28,
+  found while closing Phase 2 item 7 and fixed there. Anything phrased as "every
+  aggregate" in this plan is worth re-checking against the Tracearr path, which
+  reimplements rather than reuses.
 - **Item 10 done.** `GetItemPlayDurations()` is hoisted out of the `Select`
   lambda in `GetPurgatoryItems` (it was a full-table `SUM…GROUP BY` re-running
   once per Chapel item). The duplicate episode fetch is gone: the method ran
