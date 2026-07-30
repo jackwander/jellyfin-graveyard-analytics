@@ -162,37 +162,25 @@
                     </table>
                 </div>
 
-                <div id="tracearrTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #00bcd4; overflow-x: auto;">
+                <!--
+                    One table for both engines. Both now return the same VisitorResponse, so
+                    there is nothing to sniff: the Fate cell fills itself when the engine
+                    reports progress and stays empty when it cannot.
+                -->
+                <div id="visitorTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
                     <table style="width: 100%; text-align: left; border-collapse: collapse;">
                         <thead>
-                            <tr style="border-bottom: 2px solid #00bcd4; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
-                                <th style="padding: 12px 10px; color: #00bcd4;">Visitor</th>
+                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
+                                <th style="padding: 12px 10px;">Time of Disturbance</th>
+                                <th style="padding: 12px 10px;">Visitor</th>
                                 <th style="padding: 12px 10px;">The Relic (Media)</th>
                                 <th style="padding: 12px 10px;">The Vessel (Device)</th>
-                                <th style="padding: 12px 10px;">Time of Disturbance</th>
-                                <th style="padding: 12px 10px;">Duration</th>
                                 <th style="padding: 12px 10px;">Method</th>
+                                <th style="padding: 12px 10px;">Duration</th>
                                 <th style="padding: 12px 10px;">The Fate</th>
                             </tr>
                         </thead>
-                        <tbody id="tracearrTableBody"></tbody>
-                    </table>
-                </div>
-
-                <div id="fallbackTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
-                    <h3 style="color: #4CAF50; margin-top: 0; font-size: 0.9em; text-transform: uppercase; letter-spacing: 1px;">Local Playback Logs (Legacy)</h3>
-                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid #4CAF50; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
-                                <th style="padding: 12px 10px;">Time</th>
-                                <th style="padding: 12px 10px; color: #4CAF50;">Visitor</th>
-                                <th style="padding: 12px 10px;">Subject (Media)</th>
-                                <th style="padding: 12px 10px;">Device</th>
-                                <th style="padding: 12px 10px;">Method</th>
-                                <th style="padding: 12px 10px;">Duration</th>
-                            </tr>
-                        </thead>
-                        <tbody id="fallbackTableBody"></tbody>
+                        <tbody id="visitorTableBody"></tbody>
                     </table>
                 </div>
 
@@ -372,8 +360,7 @@
 
                 var mediaTableContainer = document.getElementById('mediaTableContainer');
                 var morgueTableContainer = document.getElementById('morgueTableContainer');
-                var tracearrTableContainer = document.getElementById('tracearrTableContainer');
-                var fallbackTableContainer = document.getElementById('fallbackTableContainer');
+                var visitorTableContainer = document.getElementById('visitorTableContainer');
 
                 var visitorSummary = document.getElementById('visitorSummary');
                 var visitorFilters = document.getElementById('visitorFilters');
@@ -391,8 +378,7 @@
                 document.getElementById('coverageBanner').style.display = 'none';
                 mediaTableContainer.style.display = 'none';
                 morgueTableContainer.style.display = 'none';
-                tracearrTableContainer.style.display = 'none';
-                fallbackTableContainer.style.display = 'none';
+                visitorTableContainer.style.display = 'none';
                 visitorSummary.style.display = 'none';
                 visitorFilters.style.display = 'none';
                 settingsContainer.style.display = 'none';
@@ -477,98 +463,19 @@
 
             view.addEventListener('viewshow', function () {
 
+                // Both engines return the same VisitorResponse, so there is one renderer and
+                // no payload sniffing. Anything only one engine can report (the Fate cell)
+                // is optional per row, not a separate table.
+                var VISITOR_COLUMNS = 7;
+
                 window.renderVisitorTable = function(response) {
-                    var isTracearr = !!response.data;
+                    document.getElementById('visitorTableContainer').style.display = 'block';
+                    document.getElementById('visitorSummary').style.display = 'flex';
 
-                    var tracearrCont = document.getElementById('tracearrTableContainer');
-                    var fallbackCont = document.getElementById('fallbackTableContainer');
-                    var summaryCont = document.getElementById('visitorSummary');
+                    renderSummary(response);
+                    renderSessions(response);
 
-                    if (isTracearr) {
-                        tracearrCont.style.display = 'block';
-                        fallbackCont.style.display = 'none';
-                        summaryCont.style.display = 'none';
-                        renderTracearrRows(response.data);
-                    } else {
-                        tracearrCont.style.display = 'none';
-                        fallbackCont.style.display = 'block';
-                        summaryCont.style.display = 'flex';
-                        renderFallbackRows(response);
-                    }
-
-                    function renderTracearrRows(items) {
-                        var tbody = document.getElementById('tracearrTableBody');
-                        clear(tbody);
-
-                        if (items.length === 0) {
-                            emptyRow(tbody, 7, 'No Tracearr records found for this period.');
-                            return;
-                        }
-
-                        items.forEach(function(session) {
-                            var tr = document.createElement('tr');
-                            tr.style.borderBottom = '1px solid #222';
-
-                            var username = session.user && session.user.username ? session.user.username : 'Unknown Entity';
-                            var title = session.showTitle ? (session.showTitle + ' - ' + session.mediaTitle) : (session.mediaTitle || 'Unknown Relic');
-                            var watchDate = session.startedAt ? new Date(session.startedAt).toLocaleString() : 'Unknown Date';
-
-                            var totalSec = Math.floor((session.durationMs || 0) / 1000);
-                            var h = Math.floor(totalSec / 3600);
-                            var m = Math.floor((totalSec % 3600) / 60);
-                            var s = totalSec % 60;
-                            var formattedDuration = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
-
-                            tr.appendChild(td('padding:12px 10px; color:#e0e0e0; font-weight:bold;', username));
-                            tr.appendChild(td('padding:12px 10px; color:#fff;', title));
-
-                            var deviceCell = td('padding:12px 10px; color:#aaa;', session.device || 'Unknown Vessel');
-                            deviceCell.appendChild(document.createElement('br'));
-                            deviceCell.appendChild(subLine(session.player || 'Unknown Player'));
-                            tr.appendChild(deviceCell);
-
-                            tr.appendChild(td('padding:12px 10px; color:#aaa; font-size:0.9em;', watchDate));
-                            tr.appendChild(td('padding:12px 10px; font-family:monospace; color:#aaa;', formattedDuration));
-
-                            var isTranscode = session.isTranscode;
-                            var methodCell = td('padding:12px 10px;');
-                            methodCell.appendChild(span(
-                                'color:' + (isTranscode ? '#cf6679' : '#888') + '; font-weight:' + (isTranscode ? 'bold' : 'normal') + ';',
-                                session.videoDecision ? String(session.videoDecision).toUpperCase() : 'UNKNOWN'));
-                            tr.appendChild(methodCell);
-
-                            var fateCell = td('padding:12px 10px;');
-                            if (session.watched) {
-                                fateCell.appendChild(span('color: #4CAF50; font-weight: bold;', 'Laid to Rest'));
-                            } else if (session.totalDurationMs && session.progressMs) {
-                                var progress = parseInt(session.progressMs, 10);
-                                var total = parseInt(session.totalDurationMs, 10);
-                                var percentage = (progress / total) * 100;
-
-                                if (percentage >= 85) {
-                                    fateCell.appendChild(span('color: #8bc34a; font-weight: bold;', 'Near Death'));
-                                } else if (percentage >= 50 && percentage < 85) {
-                                    fateCell.appendChild(span('color: #ffeb3b;', 'Lingering'));
-                                } else if (percentage >= 20 && percentage < 50) {
-                                    fateCell.appendChild(span('color: #9E9E9E; font-style: italic;', 'Ghosted'));
-                                } else {
-                                    fateCell.appendChild(span('color: #FF9800; font-weight: bold;', 'Left for Dead'));
-                                }
-                                fateCell.appendChild(document.createElement('br'));
-                                fateCell.appendChild(span('font-size:0.75em; color:#555;', Math.round(percentage) + '% Complete'));
-                            } else {
-                                fateCell.appendChild(span('color: #555;', 'Unknown Fate'));
-                            }
-                            tr.appendChild(fateCell);
-
-                            tbody.appendChild(tr);
-                        });
-                    }
-
-                    function renderFallbackRows(data) {
-                        var tbody = document.getElementById('fallbackTableBody');
-                        clear(tbody);
-
+                    function renderSummary(data) {
                         var leaderboardList = document.getElementById('leaderboardList');
                         clear(leaderboardList);
                         var leaders = data.Leaderboard || [];
@@ -589,42 +496,87 @@
                         }
 
                         document.getElementById('ghostsList').textContent = (data.Ghosts && data.Ghosts.length > 0) ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
+                    }
+
+                    function renderSessions(data) {
+                        var tbody = document.getElementById('visitorTableBody');
+                        clear(tbody);
 
                         var sessions = data.Sessions || [];
                         if (sessions.length === 0) {
-                            emptyRow(tbody, 6, 'No local logs found.');
+                            emptyRow(tbody, VISITOR_COLUMNS, 'No sessions recorded for this period.');
                             return;
                         }
 
                         if (data.Truncated) {
                             var notice = document.createElement('tr');
                             var noticeCell = td('padding:10px; color:#ff9800; font-size:0.9em;',
-                                'Showing the most recent ' + data.RowLimit + ' sessions — the timeframe holds more, so the leaderboard and ghosts below cover only these rows.');
-                            noticeCell.colSpan = 6;
+                                'Showing the most recent ' + data.RowLimit + ' sessions — the timeframe holds more, so the leaderboard and ghosts above cover only these rows.');
+                            noticeCell.colSpan = VISITOR_COLUMNS;
                             notice.appendChild(noticeCell);
                             tbody.appendChild(notice);
                         }
 
                         sessions.forEach(function(s) {
                             var tr = document.createElement('tr');
-                            tr.style.borderBottom = '1px solid #333';
+                            tr.style.borderBottom = '1px solid #222';
                             var methodColor = s.IsTranscode ? '#cf6679' : '#888';
                             var methodWeight = s.IsTranscode ? 'bold' : 'normal';
 
                             tr.appendChild(td('padding:12px 10px; color:#aaa; font-size:0.9em;', s.Time || 'Unknown'));
                             tr.appendChild(td('padding:12px 10px; color:#e0e0e0; font-weight:bold;', s.Visitor || 'Unknown'));
 
-                            var subjectCell = td('padding:12px 10px; color:#fff;', s.Subject || 'Unknown');
+                            var subjectCell = td('padding:12px 10px; color:#fff;', s.Subject || 'Unknown Relic');
                             subjectCell.appendChild(document.createElement('br'));
                             subjectCell.appendChild(subLine(s.Type || ''));
                             tr.appendChild(subjectCell);
 
-                            tr.appendChild(td('padding:12px 10px; color:#aaa;', s.Device || 'Unknown'));
+                            var deviceCell = td('padding:12px 10px; color:#aaa;', s.Device || 'Unknown Vessel');
+                            if (s.Player) {
+                                deviceCell.appendChild(document.createElement('br'));
+                                deviceCell.appendChild(subLine(s.Player));
+                            }
+                            tr.appendChild(deviceCell);
+
                             tr.appendChild(td('padding:12px 10px; color:' + methodColor + '; font-weight:' + methodWeight + ';', s.Method || 'Unknown'));
                             tr.appendChild(td('padding:12px 10px; font-family:monospace; color:#aaa;', s.Duration || '00:00:00'));
+                            tr.appendChild(fateCell(s));
 
                             tbody.appendChild(tr);
                         });
+                    }
+
+                    // Fate uses whatever the engine could report: an explicit Watched verdict
+                    // outranks a percentage, and an engine that reports neither gets a dash
+                    // rather than a guess. Playback Reporting records elapsed time but not
+                    // item runtime, so the local engine always lands in that last case.
+                    function fateCell(s) {
+                        var cell = td('padding:12px 10px;');
+
+                        if (s.Watched === true) {
+                            cell.appendChild(span('color: #4CAF50; font-weight: bold;', 'Laid to Rest'));
+                            return cell;
+                        }
+
+                        if (s.ProgressPercent === null || s.ProgressPercent === undefined) {
+                            cell.appendChild(span('color: #444;', '—'));
+                            return cell;
+                        }
+
+                        var percentage = s.ProgressPercent;
+                        if (percentage >= 85) {
+                            cell.appendChild(span('color: #8bc34a; font-weight: bold;', 'Near Death'));
+                        } else if (percentage >= 50) {
+                            cell.appendChild(span('color: #ffeb3b;', 'Lingering'));
+                        } else if (percentage >= 20) {
+                            cell.appendChild(span('color: #9E9E9E; font-style: italic;', 'Ghosted'));
+                        } else {
+                            cell.appendChild(span('color: #FF9800; font-weight: bold;', 'Left for Dead'));
+                        }
+
+                        cell.appendChild(document.createElement('br'));
+                        cell.appendChild(span('font-size:0.75em; color:#555;', Math.round(percentage) + '% Complete'));
+                        return cell;
                     }
                 };
 

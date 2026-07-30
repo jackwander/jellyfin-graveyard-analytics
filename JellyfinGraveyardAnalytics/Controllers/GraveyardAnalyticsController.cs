@@ -411,7 +411,23 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 {
                     try
                     {
-                        var tracearrData = await _tracearrService.GetVisitorHistoryAsync(endDate, weeksBack, cancellationToken).ConfigureAwait(false);
+                        var tracearrData = await _tracearrService
+                            .GetVisitorHistoryAsync(endDate, weeksBack, config.GuestbookRowLimit, cancellationToken)
+                            .ConfigureAwait(false);
+
+                        // Ghosts are Jellyfin users with nothing in the window, so they can
+                        // only be derived here — Tracearr knows who watched, not who exists
+                        // on this server. Matching is by username across two namespaces;
+                        // a Tracearr-side rename shows its old owner as a ghost.
+                        var active = new HashSet<string>(
+                            tracearrData.Sessions.Select(s => s.Visitor),
+                            StringComparer.OrdinalIgnoreCase);
+
+                        tracearrData.Ghosts = _userManager.Users
+                            .Select(u => u.Username)
+                            .Where(name => !active.Contains(name))
+                            .ToList();
+
                         return Ok(tracearrData);
                     }
                     catch (Exception ex)

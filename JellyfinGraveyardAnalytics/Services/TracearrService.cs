@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using JellyfinGraveyardAnalytics.Configuration;
+using JellyfinGraveyardAnalytics.Models;
 
 namespace JellyfinGraveyardAnalytics.Services
 {
@@ -26,11 +29,25 @@ namespace JellyfinGraveyardAnalytics.Services
     public class TracearrService
     {
         /// <summary>
-        /// Ceiling on history pages walked in one request. Tracearr pages are small and the
-        /// caller asks for a year at a time, so an uncapped loop is unbounded work on a busy
-        /// server. Hitting the cap is logged, never silent.
+        /// Ceiling on history pages walked in one request. Backstop only: with a real date
+        /// window and the maximum page size, reaching it takes 4,000 sessions in the
+        /// requested window. Hitting it is logged, never silent.
         /// </summary>
         private const int MaxHistoryPages = 40;
+
+        /// <summary>
+        /// Page size requested explicitly rather than taking Tracearr's default of 25.
+        /// 100 is the documented maximum — anything larger is rejected with 400, which is
+        /// what the earlier "500 and 1000 come back unparseable" note was seeing.
+        /// </summary>
+        private const int HistoryPageSize = 100;
+
+        /// <summary>
+        /// Tracearr interprets the date window in this zone. The local engine bounds its
+        /// window in UTC, so both engines must agree or the same timeframe returns different
+        /// sessions depending on which one is enabled. An unrecognized zone is a 400.
+        /// </summary>
+        private const string HistoryTimeZone = "UTC";
 
         private readonly HttpClient _httpClient;
         private readonly ILogger<TracearrService> _logger;
@@ -58,6 +75,28 @@ namespace JellyfinGraveyardAnalytics.Services
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Add("Authorization", $"Bearer {Config.TracearrApiKey}");
             return request;
+        }
+
+        /// <summary>
+        /// Builds a <c>history</c> query for one page of a date window.
+        /// </summary>
+        /// <remarks>
+        /// Tracearr's history endpoint takes <c>startDate</c> / <c>endDate</c> / <c>timezone</c>
+        /// and has <b>no</b> <c>weeksBack</c> parameter. Every earlier caller here sent
+        /// <c>weeksBack</c>, which Tracearr silently ignored: unknown query keys are dropped
+        /// rather than rejected, so the requests returned 200 and the plugin walked the
+        /// server's <i>entire</i> history every time while believing it had asked for a
+        /// window. Both callers now go through this one builder so that cannot recur.
+        /// </remarks>
+        private static string BuildHistoryEndpoint(DateTime startDate, DateTime endDate, int page)
+        {
+            // Day-granular, which is all the endpoint accepts; it expands them to the start
+            // and end of the day in the given zone.
+            var start = startDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+            var end = endDate.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+
+            return $"history?startDate={start}&endDate={end}&timezone={HistoryTimeZone}"
+                + $"&page={page}&pageSize={HistoryPageSize}";
         }
 
         private async Task<string> SendTracearrRequestAsync(string endpoint, CancellationToken cancellationToken)
@@ -89,7 +128,9 @@ namespace JellyfinGraveyardAnalytics.Services
             HttpRequestMessage request;
             try
             {
-                request = BuildRequest("history?weeksBack=1&page=1");
+                // One row is enough to prove the endpoint answers; the probe must not pull a
+                // page of real history just to say "connected".
+                request = BuildRequest("history?page=1&pageSize=1");
             }
             catch (InvalidOperationException)
             {
@@ -127,20 +168,246 @@ namespace JellyfinGraveyardAnalytics.Services
             }
         }
 
-        // Fetching the Guestbook (Visitor History)
-        public async Task<object?> GetVisitorHistoryAsync(string endDate, int weeksBack, CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Fetches the Guestbook and normalizes it into the same <see cref="VisitorResponse"/>
+        /// the local engine returns, so the dashboard renders one table instead of sniffing
+        /// the payload shape to pick a renderer.
+        /// </summary>
+        /// <param name="rowLimit">
+        /// Ceiling on sessions returned, matching the local engine's <c>GuestbookRowLimit</c>
+        /// so the same timeframe cannot serialize a different amount of JSON depending on
+        /// which engine is enabled.
+        /// </param>
+        /// <remarks>
+        /// Ghosts are left empty here: they are Jellyfin users with no activity, and Tracearr
+        /// knows who watched rather than who has an account. The controller fills them.
+        /// </remarks>
+        public async Task<VisitorResponse> GetVisitorHistoryAsync(
+            string endDate,
+            int weeksBack,
+            int rowLimit,
+            CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("Fetching The Guestbook (History) via Tracearr Engine...");
+            var windowEnd = ParseEndDate(endDate);
+            var windowStart = windowEnd.AddDays(-7 * Math.Max(weeksBack, 1));
 
-            var endpoint = $"history?weeksBack={weeksBack}&endDate={Uri.EscapeDataString(endDate)}";
+            _logger.LogInformation(
+                "Fetching The Guestbook via Tracearr Engine for {Start:yyyy-MM-dd}..{End:yyyy-MM-dd}.",
+                windowStart,
+                windowEnd);
 
-            var jsonResponse = await SendTracearrRequestAsync(endpoint, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<object>(jsonResponse);
+            var sessions = new List<VisitorSession>();
+            var watchTimes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+
+            bool truncated = false;
+            int currentPage = 1;
+            int totalPages = 1;
+
+            do
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var endpoint = BuildHistoryEndpoint(windowStart, windowEnd, currentPage);
+                var jsonResponse = await SendTracearrRequestAsync(endpoint, cancellationToken).ConfigureAwait(false);
+
+                using var document = JsonDocument.Parse(jsonResponse);
+                var root = document.RootElement;
+
+                if (root.TryGetProperty("meta", out var metaObj))
+                {
+                    totalPages = ReadTotalPages(metaObj);
+                }
+
+                if (root.TryGetProperty("data", out var dataArray) && dataArray.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var row in dataArray.EnumerateArray())
+                    {
+                        if (sessions.Count >= rowLimit)
+                        {
+                            truncated = true;
+                            break;
+                        }
+
+                        var session = MapSession(row, out var visitor, out var durationSeconds);
+                        sessions.Add(session);
+
+                        watchTimes.TryGetValue(visitor, out var running);
+                        watchTimes[visitor] = running + durationSeconds;
+                    }
+                }
+
+                if (truncated)
+                {
+                    break;
+                }
+
+                currentPage++;
+
+                if (currentPage > MaxHistoryPages && currentPage <= totalPages)
+                {
+                    truncated = true;
+                    break;
+                }
+            } while (currentPage <= totalPages);
+
+            if (truncated)
+            {
+                _logger.LogWarning(
+                    "Guestbook truncated: stopped at {Rows} rows / page {Page} of {TotalPages} for {Start:yyyy-MM-dd}..{End:yyyy-MM-dd}. The leaderboard covers only the returned rows.",
+                    sessions.Count,
+                    currentPage,
+                    totalPages,
+                    windowStart,
+                    windowEnd);
+            }
+
+            return new VisitorResponse
+            {
+                Sessions = sessions,
+                Leaderboard = BuildLeaderboard(watchTimes),
+                Truncated = truncated,
+                RowLimit = rowLimit
+            };
+        }
+
+        /// <summary>
+        /// Maps one Tracearr history row onto a <see cref="VisitorSession"/>. Field names are
+        /// the ones measured against the live server; the two <c>*Ms</c> progress fields
+        /// arrive as JSON <em>strings</em> while <c>durationMs</c> arrives as a number, which
+        /// is why every read goes through <see cref="ReadInt64"/> rather than
+        /// <c>GetInt64()</c>.
+        /// </summary>
+        private static VisitorSession MapSession(JsonElement row, out string visitor, out long durationSeconds)
+        {
+            visitor = "Unknown Entity";
+            if (row.TryGetProperty("user", out var user)
+                && user.ValueKind == JsonValueKind.Object
+                && user.TryGetProperty("username", out var username))
+            {
+                visitor = ReadString(username) ?? visitor;
+            }
+
+            var mediaTitle = ReadString(row, "mediaTitle");
+            var showTitle = ReadString(row, "showTitle");
+            var subject = string.IsNullOrEmpty(showTitle)
+                ? (mediaTitle ?? "Unknown Relic")
+                : $"{showTitle} - {mediaTitle}";
+
+            durationSeconds = ReadInt64(row, "durationMs") / 1000;
+            var elapsed = TimeSpan.FromSeconds(durationSeconds);
+
+            var startedAt = ReadString(row, "startedAt");
+            var time = DateTime.TryParse(
+                startedAt,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                out var started)
+                ? DateTime.SpecifyKind(started, DateTimeKind.Utc).ToLocalTime().ToString("MMM dd, yyyy - h:mm tt", System.Globalization.CultureInfo.CurrentCulture)
+                : "Unknown Date";
+
+            var progressMs = ReadInt64(row, "progressMs");
+            var totalDurationMs = ReadInt64(row, "totalDurationMs");
+            double? progressPercent = totalDurationMs > 0
+                ? Math.Clamp((double)progressMs / totalDurationMs * 100d, 0d, 100d)
+                : null;
+
+            bool? watched = row.TryGetProperty("watched", out var watchedProp)
+                && (watchedProp.ValueKind == JsonValueKind.True || watchedProp.ValueKind == JsonValueKind.False)
+                ? watchedProp.GetBoolean()
+                : null;
+
+            var decision = ReadString(row, "videoDecision");
+
+            return new VisitorSession
+            {
+                Time = time,
+                Visitor = visitor,
+                Subject = subject,
+                Type = TitleCase(ReadString(row, "mediaType")),
+                Device = ReadString(row, "device") ?? "Unknown Vessel",
+                Player = ReadString(row, "player") ?? string.Empty,
+                Method = string.IsNullOrEmpty(decision)
+                    ? "Unknown"
+                    : decision.ToUpperInvariant(),
+                Duration = $"{(int)Math.Floor(elapsed.TotalHours):D2}:{elapsed.Minutes:D2}:{elapsed.Seconds:D2}",
+                IsTranscode = row.TryGetProperty("isTranscode", out var transcode)
+                    && transcode.ValueKind == JsonValueKind.True,
+                ProgressPercent = progressPercent,
+                Watched = watched
+            };
+        }
+
+        private static List<VisitorLeaderboardEntry> BuildLeaderboard(Dictionary<string, long> watchTimes)
+        {
+            return watchTimes
+                .OrderByDescending(kvp => kvp.Value)
+                .Take(3)
+                .Select(kvp =>
+                {
+                    var ts = TimeSpan.FromSeconds(kvp.Value);
+                    return new VisitorLeaderboardEntry
+                    {
+                        Name = kvp.Key,
+                        TotalTime = $"{(int)Math.Floor(ts.TotalHours)}h {ts.Minutes}m"
+                    };
+                })
+                .ToList();
+        }
+
+        /// <summary>
+        /// Reads an integer that Tracearr may send as either a number or a string —
+        /// <c>durationMs</c> is a number while <c>progressMs</c> and <c>totalDurationMs</c>
+        /// are strings on the same row. Returns 0 for anything unreadable.
+        /// </summary>
+        private static long ReadInt64(JsonElement parent, string property)
+        {
+            if (!parent.TryGetProperty(property, out var value))
+            {
+                return 0;
+            }
+
+            return value.ValueKind switch
+            {
+                JsonValueKind.Number => value.TryGetInt64(out var number) ? number : 0,
+                JsonValueKind.String => long.TryParse(
+                    value.GetString(),
+                    System.Globalization.NumberStyles.Integer,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed) ? parsed : 0,
+                _ => 0
+            };
+        }
+
+        private static string? ReadString(JsonElement parent, string property)
+            => parent.TryGetProperty(property, out var value) ? ReadString(value) : null;
+
+        private static string? ReadString(JsonElement value)
+            => value.ValueKind == JsonValueKind.String ? value.GetString() : null;
+
+        /// <summary>
+        /// Tracearr sends <c>mediaType</c> lowercase ("episode"); the local engine's
+        /// <c>ItemType</c> is already title-cased, and the shared table shows them in the
+        /// same cell.
+        /// </summary>
+        private static string TitleCase(string? value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return "Unknown";
+            }
+
+            return char.ToUpperInvariant(value[0]) + value.Substring(1);
         }
 
         public async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates)> GetTracearrPlaybackStatsAsync(int weeksBack = 52, CancellationToken cancellationToken = default)
         {
-            _logger.LogInformation("Aggregating The Morgue data via Tracearr History...");
+            var windowEnd = DateTime.UtcNow.Date;
+            var windowStart = windowEnd.AddDays(-7 * Math.Max(weeksBack, 1));
+
+            _logger.LogInformation(
+                "Aggregating The Morgue via Tracearr history for {Start:yyyy-MM-dd}..{End:yyyy-MM-dd}.",
+                windowStart,
+                windowEnd);
 
             var playCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             var itemViewers = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
@@ -154,8 +421,7 @@ namespace JellyfinGraveyardAnalytics.Services
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Bare path: the base URL already ends in /api/v1/public.
-                var endpoint = $"history?weeksBack={weeksBack}&page={currentPage}";
+                var endpoint = BuildHistoryEndpoint(windowStart, windowEnd, currentPage);
                 var jsonResponse = await SendTracearrRequestAsync(endpoint, cancellationToken).ConfigureAwait(false);
 
                 using var document = JsonDocument.Parse(jsonResponse);
@@ -223,13 +489,29 @@ namespace JellyfinGraveyardAnalytics.Services
             if (truncated)
             {
                 _logger.LogWarning(
-                    "Tracearr history was truncated at the {MaxPages}-page cap ({TotalPages} pages available for {WeeksBack} weeks). Play counts and viewer reach are undercounted for older activity.",
+                    "Tracearr history was truncated at the {MaxPages}-page cap ({TotalPages} pages available for {Start:yyyy-MM-dd}..{End:yyyy-MM-dd}). Play counts and viewer reach are undercounted for older activity, so items may read as zero-play in the Morgue.",
                     MaxHistoryPages,
                     totalPages,
-                    weeksBack);
+                    windowStart,
+                    windowEnd);
             }
 
             return (playCounts, itemViewers, lastPlayedDates);
+        }
+
+        /// <summary>
+        /// Parses the dashboard's end-date string the same way the local engine does — as
+        /// UTC, falling back to today — so switching engines does not shift the window.
+        /// </summary>
+        private static DateTime ParseEndDate(string endDate)
+        {
+            return DateTime.TryParse(
+                endDate,
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                out var parsed)
+                ? parsed.Date
+                : DateTime.UtcNow.Date;
         }
 
         /// <summary>

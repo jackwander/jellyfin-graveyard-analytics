@@ -25,17 +25,22 @@ webhook logic changes, the mirror in `dotnet/probes/Program.cs` must change too.
 
 ```bash
 cd dashboard && npm install
-node xss.test.mjs        # 22 checks
+node xss.test.mjs        # 31 checks
 node actions.test.mjs    #  9 checks
 ```
 
 Loads `WebUI/dashboard.html`, dispatches `viewshow`, then calls the real
 `renderMediaTable` / `renderVisitorTable` / `renderCoverageBanner`.
 
-Covers: media titles and Tracearr `username` / `mediaTitle` / `device` rendering
-as literal text; no injected `<img>`; action buttons carrying no inline handler;
-per-tab column counts (morgue 6, others 9); a `0` value rendering as `"0"` rather
-than blank; empty states; the coverage banner in all three states.
+Covers: media titles and visitor `Visitor` / `Subject` / `Device` / `Player`
+rendering as literal text; no injected `<img>`; action buttons carrying no inline
+handler; per-tab column counts (morgue 6, others 9); a `0` value rendering as
+`"0"` rather than blank; empty states; the coverage banner in all three states.
+
+Since Phase 2 item 7 both engines return the same `VisitorResponse`, so the
+visitor checks drive one renderer with two payloads — Tracearr-shaped rows
+(`ProgressPercent` set → a Fate verdict) and local ones (`ProgressPercent` null →
+a dash, never a guessed verdict) — plus the truncation notice's `colSpan`.
 
 Both accept a path argument, which is how the checks were shown to be
 non-vacuous — against the pre-Phase-1 file, `xss.test.mjs` **fails 12**,
@@ -60,6 +65,29 @@ Runs the pre-fix `FormatBytes` (copied from `71a01f7`) next to the current one
 loaded from the built DLL. Shows identical output from 0 B to 5 TB, and that
 1 PB / 1 EB / `long.MaxValue` threw `IndexOutOfRangeException` before and do not
 now. Build the plugin first, or set `GRAVEYARD_DLL`.
+
+## dotnet/visitormap/ — the Tracearr → VisitorResponse mapping (Phase 2 item 7)
+
+```bash
+cd dotnet/visitormap && dotnet run                      # 21 checks, live probe skipped
+TRACEARR_URL=http://10.10.1.201:3000 TRACEARR_KEY=trr_pub_… dotnet run   # + 5 live
+```
+
+Reflects `TracearrService.MapSession` out of the built DLL and drives it with a
+**verbatim history row** captured from the live server (recorded in `PLAN.md`).
+The row is the point: `durationMs` is a JSON number while `progressMs` and
+`totalDurationMs` are JSON *strings* on the same row, so a mapper calling
+`GetInt64()` on all three throws on two of them. Also covers `{}`, a null
+`showTitle` (movies), a zero runtime (divide-by-zero), unparseable numbers, and
+progress past 100%.
+
+Then reflects `BuildHistoryEndpoint` and asserts the query string carries
+`startDate`/`endDate`/`timezone`/`pageSize=100` and **no `weeksBack`**
+(finding 27). With the two env vars set it fires that exact query at a real
+Tracearr and checks the server accepts it and that every returned row falls
+inside the window — the one harness here that exercises shipped code against the
+real service rather than a mirror. The key is read from the environment and is
+never written to the repo.
 
 ## dotnet/probes/ — SQLite and webhook behavior
 

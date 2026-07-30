@@ -548,6 +548,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     Type = row.ItemType?.ToString() ?? "Unknown",
                     Client = row.ClientName?.ToString() ?? "Unknown",
                     Device = row.DeviceName?.ToString() ?? "Unknown",
+                    Player = row.ClientName?.ToString() ?? string.Empty,
                     Method = row.PlaybackMethod?.ToString() ?? "DirectPlay",
                     Duration = formattedDuration,
                     IsTranscode = row.PlaybackMethod?.ToString().Contains("Transcode", System.StringComparison.OrdinalIgnoreCase) == true

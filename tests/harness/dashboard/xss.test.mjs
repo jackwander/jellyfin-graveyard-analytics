@@ -81,60 +81,82 @@ check('chapel: Reach cell keeps the "Souls" suffix',
   /^0 Souls$|^1 Souls$/.test(tbody.querySelectorAll('td')[5].textContent.trim()),
   JSON.stringify(tbody.querySelectorAll('td')[5].textContent));
 
-// ---- 2. Tracearr visitor rows: username / mediaTitle / device ----
+// ---- 2. Tracearr-sourced visitor rows ----
+// Item 7 normalized the Tracearr payload server-side, so the renderer sees the same
+// VisitorResponse either engine produced. What used to be a separate table is now the
+// optional Fate cell, driven by ProgressPercent / Watched.
+const visitorBody = () => doc.getElementById('visitorTableBody');
+const visitorCells = () => visitorBody().querySelectorAll('td');
+
 window.renderVisitorTable({
-  data: [{
-    user: { username: PAYLOAD },
-    mediaTitle: PAYLOAD,
-    showTitle: null,
-    device: PAYLOAD,
-    player: PAYLOAD,
-    startedAt: '2026-07-01T10:00:00Z',
-    durationMs: 3_600_000,
-    isTranscode: true,
-    videoDecision: 'transcode',
-    progressMs: 500,
-    totalDurationMs: 1000,
+  Leaderboard: [], Ghosts: [], Truncated: false, RowLimit: 5000,
+  Sessions: [{
+    Time: 'Jul 01, 2026 - 10:00 AM', Visitor: PAYLOAD, Subject: PAYLOAD, Type: 'Episode',
+    Device: PAYLOAD, Player: PAYLOAD, Method: 'TRANSCODE', Duration: '01:00:00',
+    IsTranscode: true, ProgressPercent: 50, Watched: false,
   }],
 });
-const tracearrBody = doc.getElementById('tracearrTableBody');
-check('tracearr: no <img> injected', tracearrBody.querySelectorAll('img').length === 0,
-  `imgs=${tracearrBody.querySelectorAll('img').length}`);
-check('tracearr: username is literal text',
-  tracearrBody.querySelectorAll('td')[0].textContent === PAYLOAD,
-  JSON.stringify(tracearrBody.querySelectorAll('td')[0].textContent));
+check('tracearr: no <img> injected', visitorBody().querySelectorAll('img').length === 0,
+  `imgs=${visitorBody().querySelectorAll('img').length}`);
+check('tracearr: visitor is literal text',
+  visitorCells()[1].textContent === PAYLOAD,
+  JSON.stringify(visitorCells()[1].textContent));
+check('tracearr: device cell keeps the player sub-line as text',
+  visitorCells()[3].textContent === PAYLOAD + PAYLOAD
+    && visitorCells()[3].querySelectorAll('img').length === 0,
+  JSON.stringify(visitorCells()[3].textContent));
 check('tracearr: fate cell still computes 50% -> Lingering',
-  /Lingering/.test(tracearrBody.textContent) && /50% Complete/.test(tracearrBody.textContent),
-  tracearrBody.querySelectorAll('td')[6].textContent);
+  /Lingering/.test(visitorCells()[6].textContent) && /50% Complete/.test(visitorCells()[6].textContent),
+  visitorCells()[6].textContent);
 
-// ---- 3. Local (fallback) visitor rows + leaderboard ----
+// ---- 3. Local visitor rows + leaderboard ----
+// The local engine cannot report progress, so ProgressPercent is absent and the Fate
+// cell must fall back to a dash rather than inventing a verdict.
 window.renderVisitorTable({
   Leaderboard: [{ Name: PAYLOAD, TotalTime: '5h' }],
   Ghosts: [PAYLOAD],
+  Truncated: false, RowLimit: 5000,
   Sessions: [{
     Time: '2026-07-01 10:00', Visitor: PAYLOAD, Subject: PAYLOAD, Type: 'Movie',
-    Device: PAYLOAD, Method: 'DirectPlay', Duration: '01:00:00', IsTranscode: false,
+    Device: PAYLOAD, Player: '', Method: 'DirectPlay', Duration: '01:00:00',
+    IsTranscode: false, ProgressPercent: null, Watched: null,
   }],
 });
-const fallbackBody = doc.getElementById('fallbackTableBody');
-check('fallback: no <img> injected in rows', fallbackBody.querySelectorAll('img').length === 0,
-  `imgs=${fallbackBody.querySelectorAll('img').length}`);
-check('fallback: no <img> injected in leaderboard',
+check('local: no <img> injected in rows', visitorBody().querySelectorAll('img').length === 0,
+  `imgs=${visitorBody().querySelectorAll('img').length}`);
+check('local: no <img> injected in leaderboard',
   doc.getElementById('leaderboardList').querySelectorAll('img').length === 0,
   `imgs=${doc.getElementById('leaderboardList').querySelectorAll('img').length}`);
-check('fallback: leaderboard keeps "<strong>name</strong> - time" shape',
+check('local: leaderboard keeps "<strong>name</strong> - time" shape',
   doc.getElementById('leaderboardList').querySelector('strong').textContent === PAYLOAD
     && doc.getElementById('leaderboardList').textContent.includes(' - 5h'),
   JSON.stringify(doc.getElementById('leaderboardList').textContent));
-check('fallback: ghosts list is literal text',
+check('local: ghosts list is literal text',
   doc.getElementById('ghostsList').textContent === PAYLOAD && doc.getElementById('ghostsList').querySelectorAll('*').length === 0,
   JSON.stringify(doc.getElementById('ghostsList').textContent));
+check('local: fate cell is a dash, not a guessed verdict',
+  visitorCells()[6].textContent.trim() === '—',
+  JSON.stringify(visitorCells()[6].textContent));
+check('local: absent Player leaves the device cell single-line',
+  visitorCells()[3].textContent === PAYLOAD,
+  JSON.stringify(visitorCells()[3].textContent));
 
-// ---- 4. Empty states still render ----
-window.renderVisitorTable({ data: [] });
-check('tracearr: empty state renders one row',
-  doc.getElementById('tracearrTableBody').querySelectorAll('tr').length === 1
-    && /No Tracearr records/.test(doc.getElementById('tracearrTableBody').textContent), '');
+// ---- 4. Empty state + truncation notice ----
+window.renderVisitorTable({ Sessions: [], Leaderboard: [], Ghosts: [] });
+check('visitors: empty state renders one row',
+  visitorBody().querySelectorAll('tr').length === 1
+    && /No sessions recorded/.test(visitorBody().textContent), '');
+check('visitors: empty leaderboard says so, rather than staying blank',
+  /No active visitors/.test(doc.getElementById('leaderboardList').textContent), '');
+
+window.renderVisitorTable({
+  Sessions: [{ Time: 't', Visitor: 'v', Subject: 's', Type: 'Movie', Device: 'd', Player: '', Method: 'm', Duration: '00:00:01', IsTranscode: false }],
+  Leaderboard: [], Ghosts: [], Truncated: true, RowLimit: 5000,
+});
+check('visitors: truncation notice spans the full row and names the cap',
+  /Showing the most recent 5000 sessions/.test(visitorBody().textContent)
+    && visitorBody().querySelector('td').colSpan === 7,
+  JSON.stringify(visitorBody().querySelector('td').textContent));
 
 // ---- 5. Whole-document sweep: did anything execute? ----
 await new Promise(r => setTimeout(r, 200));

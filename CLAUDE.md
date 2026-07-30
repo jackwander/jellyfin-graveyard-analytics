@@ -11,7 +11,7 @@ commit `71a01f7` — 23 findings with `file:line` refs, two locked decisions (D1
 Morgue definition, D2 play threshold), and eight phases with done-when criteria.
 Do not re-derive the findings or re-litigate D1/D2.
 
-Current position: **Phases 0, 1, 3 done; Phase 2 all but item 7 (needs a Tracearr API key). Phase 4 is next.** Phases
+Current position: **Phases 0, 1, 2, 3 done. Phase 4 is next.** Phases
 run in order. Results and evidence for each finished phase are recorded in
 `PLAN.md` under a "Phase N results" heading — read those before reopening a
 finding.
@@ -21,9 +21,13 @@ was struck in Phase 0** (empty query values bind to `null`, so the endpoint
 failed closed); the rest of finding 5 was real and is fixed. **D1's grace clamp
 was replaced by a floor gate** (decided 2026-07-30) after the clamp turned out to
 admit *more* unverifiable items the less history existed — see "D1 — RESOLVED" in
-`PLAN.md`. Findings 24-26 were added from live measurement against a real
-Tracearr server; **26 is open and blocks recommending the Tracearr engine for the
-Morgue.**
+`PLAN.md`. Findings 24-27 were added from live measurement against a real
+Tracearr server. **Finding 26 was withdrawn on 2026-07-30** — the volume it
+described was an artifact of finding 27 (`weeksBack` is not a Tracearr parameter,
+so it was ignored and every history request returned all-time totals). Nothing
+blocks the Tracearr engine for the Morgue now. Read finding 26's write-up before
+re-measuring anything against Tracearr: `GET /api/v1/public/docs` returns the
+full OpenAPI document and is the source of truth for that API.
 
 `test-release.sh` at the repo root is **intentionally untracked** — it predates
 this work. Do not `git add -A`; stage named paths (it has been swept into a commit

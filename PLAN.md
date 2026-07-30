@@ -98,6 +98,8 @@ numbers reconcile; runtime-relative needs runtime joined into the aggregate path
 | --- | --- | --- |
 | 24 | **`TestConnectionAsync` calls an endpoint that does not exist.** `GET /api/v1/public/system/status` → **404** on a live, healthy Tracearr. So the Settings tab's connection test can *never* succeed, and `PingTracearr` reports "Could not connect to Tracearr. Check your URL and API Key." even when the URL and key are perfect. Same class of bug as finding 1, missed by static reading because the endpoint name looks plausible. Confirmed real endpoints under `/api/v1/public/`: `history`, `users`, `stats`, `docs` (all 401 unauthenticated). Unauthenticated `GET /health` at the server root returns `{"status":"ok",...}`. | `TracearrService.cs:66` |
 | 25 | **`media/stale` does not exist either** — `GET /api/v1/public/media/stale` → 404. Both dead methods that Phase 2 deletes were built against an endpoint Tracearr does not serve, so they could never have worked. Strengthens item 8 from "dead code" to "dead *and* wrong". | `TracearrService.cs` (deleted methods) |
+| 26 | ~~Morgue aggregate truncated far worse than the cap suggests.~~ **Withdrawn** — the 847-sessions-per-week measurement it rested on was finding 27's ignored parameter returning all-time totals. A real week is 16. Its open question ("try `stats`/`users` before enlarging the cap") was answered: neither carries item identity, so `history` is the only possible source. Full write-up below. | — |
+| 27 | **`weeksBack` is not a Tracearr parameter.** `history` takes `startDate`/`endDate`/`timezone`; unknown keys are ignored, not rejected. So the Morgue aggregate walked *all* history while asking for 52 weeks, and the Guestbook's timeframe dropdown never narrowed anything. Fails **open** with a 200, unlike findings 1/24/25. | `TracearrService.cs:135`, `:158` (pre-fix) |
 
 ### P1 — correctness / semantics
 
@@ -306,7 +308,13 @@ Guestbook shows leaderboard + Ghosts.
 Also fix **finding 24** here — it is the same bug as item 5 wearing a different
 endpoint name, and it is what makes the Settings page lie about the connection.
 
-#### Phase 2 progress
+#### Phase 2 results — **complete (2026-07-30)**
+
+All four items done, plus findings 24, 25 and 27. Finding 26 was raised here and
+withdrawn here. The done-when criterion is met in code and verified as far as it
+can be without a Jellyfin server: the response shape, the mapping, and the live
+query are all covered by harnesses, but "all three media tabs populate" itself
+has never been observed in a running Jellyfin — that gap is Phase 6's.
 
 A live Tracearr is available at `http://10.10.1.201:3000`, which turns most of
 this phase from inference into measurement.
@@ -346,18 +354,38 @@ signature finding 1 predicted.
   a bogus key (→ "reachable but rejected the API key"), while `system/status`
   returns **404** with or without a key (→ `UnexpectedResponse`), which is why
   the old test could never report success.
-##### Tracearr live payload reference *(measured 2026-07-30, so item 7 needs no re-probing)*
+##### Tracearr live payload reference *(measured 2026-07-30)*
 
-`GET {TracearrUrl}/api/v1/public/history?weeksBack=1&page=1`, header
+`GET {TracearrUrl}/api/v1/public/history?...`, header
 `Authorization: Bearer <trr_pub_...>`. Ask the user for a key; it is not stored.
 
 ```
 meta : {"total": 847, "page": 1, "pageSize": 25}      <- no totalPages field
 ```
 
-`pageSize` is honoured and accepts at least **100**; 500 and 1000 return
-something unparseable, so the ceiling sits between. See finding 26 — the volume
-here is the problem, not the shape.
+**`GET /api/v1/public/docs` returns the full OpenAPI document** (200 with a key,
+26 KB). That is the source of truth for this section and should be re-read before
+any further endpoint guessing. The entire public surface is:
+
+| endpoint | parameters | use to us |
+| --- | --- | --- |
+| `health` | — | unauthenticated liveness |
+| `stats` | `serverId` | `activeStreams` / `totalUsers` / `totalSessions` (last 30d) / `recentViolations` — **server totals, no per-item anything** |
+| `stats/today` | `serverId`, `timezone` | today's plays / watch hours — same shape of no use |
+| `streams` | `serverId`, `summary` | *active* sessions only |
+| `streams/{id}/terminate` | — | POST |
+| `users` | `page`, `pageSize`, `serverId` | per-user `sessionCount`, `lastActivityAt`, `trustScore` |
+| `violations` | `page`, `pageSize`, `serverId`, `severity`, `acknowledged` | — |
+| `history` | `page`, `pageSize`, `serverId`, `state`, `mediaType`, **`startDate`**, **`endDate`**, **`timezone`** | the only per-session source |
+
+**There is no `weeksBack` parameter anywhere — see finding 27.** The window is
+`startDate` / `endDate` (day-granular, expanded to start/end of day in
+`timezone`), and an unknown query key is ignored rather than rejected.
+
+`pageSize` maxes at **100** — the documented ceiling. 101 and above return
+**400**, which is what the earlier "500 and 1000 return something unparseable"
+note was actually seeing. Paging verified: 9 pages × 100 = the 847 total.
+Inverted ranges (`startDate > endDate`) and unknown IANA zones are both 400.
 
 Row fields relevant to mapping (the guesses in the existing code were all
 **correct**, with one type surprise):
@@ -382,19 +410,38 @@ Row fields relevant to mapping (the guesses in the existing code were all
 The two `*Ms` strings are why any C# mapping must tolerate string-or-number
 rather than calling `GetInt64()` directly; the dashboard already `parseInt`s them.
 
-For **Ghosts**, the local path derives them from Jellyfin's user list. Tracearr
-has its own `users` endpoint (200 with a key), so decide whether ghosts come from
-Jellyfin users minus active Tracearr usernames — the two namespaces need not
-match — or from Tracearr's own user list. Unresolved.
+**Ghosts — RESOLVED (2026-07-30): Jellyfin's user list, not Tracearr's.**
+`users` was probed to settle it. Tracearr's usernames are Jellyfin's, verbatim —
+each row carries the Jellyfin user id inside `thumbPath`
+(`/Users/aaa36…/Images/Primary`), so the namespaces are one namespace and
+matching by username is sound. Tracearr's own list is still the wrong source:
+`sessionCount` is **0 for all 17 users** while ten of them have a non-null
+`lastActivityAt`, so the field that looks like the ghost test is not populated.
+More importantly a ghost means "has an account on *this* Jellyfin server and
+watched nothing" — Tracearr is multi-server (every row carries `serverId` /
+`serverName`; this instance tracks one, `Entertainment`), so its user list
+answers a different question. Ghosts are therefore derived in the controller as
+Jellyfin users minus the usernames present in the returned sessions. Known
+limitation, recorded in the code: a Tracearr-side rename shows the old name as a
+ghost.
 
-- **Item 7 still open** (no longer blocked — the shapes above are what it needed). Normalizing `GetVisitorHistoryAsync` into
-  `VisitorResponse` means mapping real field names into `Sessions` /
-  `Leaderboard` / `Ghosts`, and the current code's field guesses
-  (`user.username`, `startedAt`, `durationMs`, `videoDecision`, `isTranscode`,
-  `progressMs`, `totalDurationMs`, `meta.total`, `meta.pageSize`) are exactly
-  what is in question. Ghosts also need a decision: the local path derives them
-  from Jellyfin's user list, but Tracearr has its own `users` endpoint and the
-  two username spaces may not match. Both want a look at real payloads first.
+- **Item 7 done.** `GetVisitorHistoryAsync` returns `VisitorResponse` instead of
+  `object?`, so the dashboard's `!!response.data` sniff is gone along with the
+  duplicate table it selected — one table now serves both engines and the two
+  summary cards are back for Tracearr. **Every field guess in the old code was
+  correct**; the type guesses were not, which is the whole reason this needed
+  live payloads: `durationMs` is a number while `progressMs` and
+  `totalDurationMs` are strings *on the same row*, so all integer reads go
+  through a string-or-number `ReadInt64`. The Fate column survived as an optional
+  per-row cell: `VisitorSession` gained nullable `ProgressPercent` / `Watched`,
+  which Tracearr fills and the local engine leaves null (Playback Reporting
+  records elapsed time but not item runtime), and a null renders as a dash rather
+  than a guessed verdict. Paging is bounded by `GuestbookRowLimit` as well as the
+  page cap, and `Truncated` now means the same thing on both paths.
+- Evidence: `tests/harness/dotnet/visitormap` — reflection over the built
+  assembly, driving `MapSession` with the verbatim live row above, then firing
+  the generated query at the real server (21 checks + 5 live). The jsdom
+  `xss.test.mjs` was rewritten to the single response shape, 31/31.
 
 ### Phase 3 — Make the numbers correct
 
@@ -543,37 +590,91 @@ appear on a young database, so it is a product call, not a refactor.
 
 </details>
 
-### Finding 26 (P0) — the Tracearr Morgue aggregate is truncated far worse than the cap suggests
+### Finding 26 (P0) — ~~the Tracearr Morgue aggregate is truncated far worse than the cap suggests~~ **WITHDRAWN 2026-07-30 — the volume was an artifact of finding 27**
 
-Measured on the live server with a working key:
+**This finding was wrong, and the way it was wrong is the useful part.** It was
+built on one measurement, `history?weeksBack=1 -> total: 847`, read as "847
+sessions in a single week". `weeksBack` is not a Tracearr parameter (finding 27);
+it was ignored, so 847 was the server's **entire history**, not one week's.
+Re-measured with the real parameters:
 
 ```
-GET /api/v1/public/history?weeksBack=1   ->  meta {"total": 847, "page": 1, "pageSize": 25}
+history                                          -> total 847   <- all-time
+history?weeksBack=1                              -> total 847   <- parameter ignored
+history?weeksBack=52                             -> total 847   <- same, proving it
+history?startDate=2025-07-30&endDate=2026-07-30  -> total 847   <- a real year
+history?startDate=2026-07-23&endDate=2026-07-30  -> total  16   <- a real week
+history?startDate=2026-07-29&endDate=2026-07-30  -> total   2
 ```
 
-**847 sessions in a single week**, and `meta` carries **no `totalPages`** — only
-`total` / `page` / `pageSize`, so the page count must be derived (which
-`ReadTotalPages` already does). One week is 34 pages at the default page size;
-the aggregate requests **52 weeks**, so a full year is on the order of 1,700
-pages. The Phase 2 cap of 40 pages therefore covers roughly **1,000 rows — about
-ten days** — not the year the code asks for.
+A week is **16 sessions, not 847** — off by 53×. The corrected arithmetic: a year
+is 847 rows, **9 pages** at the maximum page size of 100, against a 40-page cap
+worth 4,000 rows. Nothing was being truncated on this server; the "cap covers
+about ten days" conclusion does not survive, and neither does the claim that
+items were reading as zero-play because of it.
 
-This is worse than a performance issue. `GetTracearrPlaybackStatsAsync` feeds
-`playCounts`, so every item whose only plays fall outside those ~10 days reads as
-**zero-play** and lands in the Morgue as a deletion candidate. The Phase 2 cap
-made the truncation *visible* in the log, which is how this surfaced, but the
-underlying aggregate was already wrong before the cap existed — it would simply
-have walked all 1,700 pages on every keystroke instead.
+What *is* real, and is what the bad measurement was standing in front of: the
+aggregate never applied a window at all, so it walked the whole history every
+time regardless of the 52 weeks it thought it had asked for. That is finding 27,
+and fixing it fixes the volume problem by construction — the cap is now a
+backstop rather than the binding constraint.
 
-`pageSize` is honoured and accepts at least **100** (500 and 1000 return
-something unparseable, so the ceiling is between). Raising it to 100 cuts the
-year to ~440 requests — better, still not viable per keystroke.
+**The recommendation this finding carried — "try `stats`/`users` before enlarging
+the cap" — was executed, and the answer is no.** Both endpoints were probed with
+a working key and neither can feed the Morgue:
 
-The real fix is not paging at all: Tracearr exposes `stats` and `users`
-endpoints, and an aggregate-side query would replace walking raw history. Phase 4
-(TTL cache) reduces the frequency but not the wrongness. **Recorded, not fixed —
-it needs an endpoint decision, and it should be settled before the Tracearr
-engine is recommended for the Morgue.**
+```
+stats -> {"activeStreams":0,"totalUsers":17,"totalSessions":130,"recentViolations":0,...}
+users -> per-user {sessionCount, lastActivityAt, trustScore, serverId, ...} x 17
+```
+
+`stats` is a dashboard summary — four server-wide counters, no per-item breakdown
+and no date window beyond its fixed "last 30 days". `users` aggregates by *user*,
+not by media item. The Morgue needs plays-per-item, and **`history` is the only
+endpoint in the entire public API that carries item identity**. There is no
+aggregate-side query to move to; paging raw history is not a workaround, it is
+the only option the API offers. Phase 4's TTL cache is therefore the right lever
+after all, and it is now sitting on ~9 pages rather than an unbounded walk.
+
+**Superseded by finding 27. Nothing here blocks the Tracearr engine for the
+Morgue any more** — that gate was raised on measurements that turned out to be an
+artifact of the very bug it was measuring.
+
+### Finding 27 (P0) — `weeksBack` is not a Tracearr parameter, so no history request has ever been windowed
+
+Every `history` call the plugin makes sends `weeksBack`. Tracearr's history
+endpoint takes `startDate` / `endDate` / `timezone` and **has no `weeksBack`**;
+unknown query keys are dropped rather than rejected, so each request returned a
+healthy 200 while the parameter meaning "how far back to look" fell on the floor.
+
+Two consequences, both silent:
+
+1. **The Morgue aggregate** asked for 52 weeks and got *everything*, on every tab
+   switch and every debounced keystroke. On a young server that is
+   indistinguishable from working; on an old one it is an unbounded walk that the
+   page cap then truncates arbitrarily — which is exactly what finding 26 mistook
+   for a volume problem.
+2. **The Guestbook** sent `endDate` (which *is* real) with no `startDate`, so the
+   timeframe dropdown never narrowed anything — 1 week and 12 weeks returned the
+   same rows, everything up to the end date. Confirmed:
+   `history?endDate=2026-07-30 -> total 847`, versus 16 for the same week with a
+   `startDate`.
+
+This is the third endpoint-contract bug in this family (findings 1, 24, 25) and
+the first one that fails *open* — the others 404'd loudly, this one returns 200
+and quietly answers a different question. Static reading could not have caught
+it: the parameter name is plausible and the response is well-formed.
+
+**Fixed.** Both callers now go through one `BuildHistoryEndpoint(start, end, page)`
+that emits `startDate` / `endDate` / `timezone=UTC` / `pageSize=100`, so the two
+paths cannot drift apart again. `timezone` is pinned to UTC because the local
+engine bounds its window in UTC and the same timeframe must not return different
+sessions depending on which engine is enabled. `TestConnectionAsync` also stopped
+sending the phantom parameter — it now probes `history?page=1&pageSize=1`, which
+is one row instead of a page, and still gives 200 with a good key / 401 with a
+bad one. Verified end to end: the query string produced by the built assembly was
+fired at the live server and returns 16 rows, all inside the requested window
+(`tests/harness/dotnet/visitormap`).
 
 ### Phase 4 — Performance
 
