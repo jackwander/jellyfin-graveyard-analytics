@@ -5,7 +5,12 @@
 name: "jellyfin-plugin-graveyard-analytics"
 guid: "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21"
 version: "1.1.0.0"
-jellyfin_version: "10.11.0.0"
+# The lowest server this can actually load on, and it must equal manifest.json's targetAbi.
+# Not 10.11.0.0, which this claimed: the assembly references name the version the csproj pins,
+# and .NET rolls an assembly reference forward but never back — so on 10.11.0-10.11.5 the plugin
+# fails to bind Jellyfin.Database.Implementations before any of its own code runs. Measured by
+# tests/harness/dotnet/abi across the range.
+jellyfin_version: "10.11.6.0"
 owner: "jackwander"
 nicename: "Graveyard Analytics"
 description: "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and track your active Visitors."

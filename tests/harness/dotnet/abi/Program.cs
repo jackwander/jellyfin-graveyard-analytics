@@ -179,8 +179,21 @@ if (compat is not null)
         {
             // Deliberately broad: this harness reports, and a crash here would look like the
             // run simply stopping partway.
+            var cause = (ex as TargetInvocationException)?.InnerException ?? ex;
+
+            // The plugin's assembly references name the version it was built against, and .NET
+            // will roll *forward* to a newer assembly but never back to an older one. So this
+            // is not a harness artifact — it is the plugin's compiled floor, and it is why the
+            // manifest's targetAbi has to be the version the csproj pins rather than the
+            // earliest 10.11 that happens to have the right members.
+            var isFloor = cause is FileLoadException
+                || cause.Message.Contains("manifest definition does not match", StringComparison.Ordinal);
+
             Check("the shim resolves an accessor on this ABI", false,
-                (ex as TargetInvocationException)?.InnerException?.Message ?? ex.Message);
+                isFloor
+                    ? $"below the plugin's compiled floor — it references Jellyfin assemblies "
+                      + $"newer than {controllerVersion}, and .NET does not bind downwards"
+                    : cause.Message);
         }
     }
 }
