@@ -26,6 +26,73 @@ namespace GraveyardAnalytics.Tests;
 public class StoredTimestampTests
 {
     /// <summary>
+    /// The other half of finding 30, which came from Jellyfin rather than from a stored string.
+    /// <see cref="JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc(DateTime)"/> is
+    /// the boundary, and what it must do for each incoming <see cref="DateTimeKind"/> is
+    /// testable here even though the <c>Kind</c> Jellyfin actually hands over is not: this
+    /// project constructs its own items, so the <c>Kind</c> a test observes is the one the test
+    /// wrote. Which is exactly why the normalizer takes all three cases rather than trusting
+    /// one — the answer for the stock SQLite provider is <c>Utc</c>, established from
+    /// Jellyfin's source and cited on the helper, but it is the provider's guarantee and not
+    /// the DbContext's.
+    /// </summary>
+    [Fact]
+    public void EveryIncomingKindLeavesTheBoundaryAsTheSameUtcInstant()
+    {
+        // 19:30 on 3 March in a UTC-8 zone is 03:30 on the 4th in UTC — the case where
+        // mislabelling moves the calendar day, which is the whole visible symptom.
+        var instant = new DateTime(2026, 3, 4, 3, 30, 0, DateTimeKind.Utc);
+
+        var alreadyUtc = JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc(instant);
+        Assert.Equal(DateTimeKind.Utc, alreadyUtc.Kind);
+        Assert.Equal(instant, alreadyUtc);
+
+        // Unspecified is relabelled, not shifted: a provider that failed to mark the value
+        // still stored the UTC instant Jellyfin writes, so converting would corrupt it.
+        var unspecified = DateTime.SpecifyKind(instant, DateTimeKind.Unspecified);
+        var relabelled = JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc(unspecified);
+        Assert.Equal(DateTimeKind.Utc, relabelled.Kind);
+        Assert.Equal(instant.Ticks, relabelled.Ticks);
+
+        // Local is a real offset to remove, so this one is a conversion.
+        var local = instant.ToLocalTime();
+        var converted = JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc(local);
+        Assert.Equal(DateTimeKind.Utc, converted.Kind);
+        Assert.Equal(instant, converted);
+
+        Assert.Null(JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc((DateTime?)null));
+        Assert.Equal(instant, JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc((DateTime?)local));
+    }
+
+    /// <summary>
+    /// And the consequence that makes the boundary worth having: <see cref="DateTime"/>
+    /// comparison ignores <see cref="DateTimeKind"/> and compares raw ticks, so a mislabelled
+    /// value tested against a UTC bound is wrong without complaining. The Morgue's grace cutoff
+    /// and D1's floor gate are both such comparisons.
+    /// </summary>
+    [Fact]
+    public void ComparingAMislabelledLocalValueAgainstAUtcBoundIsWrongUntilNormalized()
+    {
+        // A machine on UTC cannot show this, and plenty of servers run that way.
+        if (TimeZoneInfo.Local.BaseUtcOffset == TimeSpan.Zero)
+        {
+            return;
+        }
+
+        var bound = new DateTime(2026, 3, 4, 3, 30, 0, DateTimeKind.Utc);
+
+        // The same instant, expressed locally. Ticks differ by the offset, so the raw
+        // comparison disagrees with the instant comparison.
+        var sameInstantLocal = bound.ToLocalTime();
+
+        Assert.NotEqual(bound.Ticks, sameInstantLocal.Ticks);
+        Assert.Equal(bound, JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc(sameInstantLocal));
+        Assert.Equal(
+            bound.Ticks,
+            JellyfinGraveyardAnalytics.Services.JellyfinTimestamps.AsUtc(sameInstantLocal).Ticks);
+    }
+
+    /// <summary>
     /// The stored format: SQLite's, naive, no zone marker. Parsed as the UTC it is.
     /// </summary>
     [Fact]

@@ -76,6 +76,41 @@ namespace JellyfinGraveyardAnalytics.Database
         /// </summary>
         public bool PlaybackDatabaseExists => File.Exists(PlaybackDbPath);
 
+        /// <summary>
+        /// Why the Playback Reporting data cannot be read, or <see langword="null"/> when it
+        /// can. Log-only text: the client-facing message is the controller's own constant.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="PlaybackDatabaseExists"/> is a file test, so a database that exists but
+        /// carries no <c>PlaybackActivity</c> table passed the guard, reached the queries and
+        /// surfaced as a 500 — where the admin needed the actionable 400. That is not a
+        /// hypothetical shape: Playback Reporting creates its database before its schema, and
+        /// this plugin opens it read-only, so it can neither create nor migrate the table it
+        /// is missing.
+        /// <para>
+        /// Deliberately narrow. A file that is present, has the table, and then fails to open
+        /// for some other reason — locked, or not a database at all — still throws, because
+        /// reporting a transient <c>SQLITE_BUSY</c> as "Playback Reporting is not installed"
+        /// would be a worse answer than an error.
+        /// </para>
+        /// </remarks>
+        public string? PlaybackDataUnavailableReason()
+        {
+            if (!PlaybackDatabaseExists)
+            {
+                return "The Playback Reporting plugin database was not found at " + PlaybackDbPath;
+            }
+
+            using var connection = new SqliteConnection(_playbackDbConn);
+
+            var table = connection.QuerySingleOrDefault<string?>(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'PlaybackActivity'");
+
+            return table is null
+                ? "The Playback Reporting database exists but has no PlaybackActivity table."
+                : null;
+        }
+
         public Dictionary<string, int> GetItemPlayCounts(int minPlayDurationSeconds)
         {
             using var connection = new SqliteConnection(_playbackDbConn);

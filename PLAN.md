@@ -1267,6 +1267,123 @@ refetch rather than being driven by it.
 
 ---
 
+## Post-plan: the three carried items — **ALL CLOSED 2026-07-30**
+
+The items "Phase 6 results" left open, and Phase 7 did not touch. That text still
+describes them as open; this section supersedes it. One of the three turned out to be
+considerably worse than recorded, and one turned out not to be a defect at all.
+
+### The pin (item 21) — this was a live runtime break, not deferred hygiene
+
+Phase 6 recorded this as a build-only concern: `10.11.*-*` resolved to 10.11.11, which
+removed `IUserManager.Users`, so the pin stayed and moving was "a code change, not a
+build one". **That framing missed the actual consequence.**
+
+Measured, with a new harness (`tests/harness/dotnet/abi`) that reads the MemberRef table
+of the built assembly's IL and resolves every `Jellyfin.*` member against a given
+release:
+
+| Jellyfin | `IUserManager.Users` | `GetUsers()` | pre-fix plugin |
+| --- | --- | --- | --- |
+| 10.11.6 – 10.11.8 | present | absent | 47 refs, 0 missing |
+| 10.11.9 – 10.11.11 | **absent** | present | 47 refs, **`get_Users` missing** |
+
+The two never coexist, so no single compiled call reaches both. The shipped plugin was
+compiled against 10.11.6 and carried IL referencing `get_Users`. `manifest.json` declares
+`targetAbi: 10.11.6.0`, which Jellyfin treats as a **minimum** — so on a 10.11.9+ server
+the plugin *loads normally* and then fails the moment that code runs. Both call sites are
+the Guestbook: `AnalyticsService.GetVisitorActivity` and
+`GraveyardAnalyticsController.GetVisitors`. Every user on a current 10.11.x had a broken
+Guestbook.
+
+Two record corrections. The finding's `file:line` was **`AnalyticsService.cs:429`**; the
+call is at **`:642`**. And the break arrived in **10.11.9**, not 10.11.11 — the version
+the floating range happened to resolve to is not the version that broke it.
+
+**Fixed** by `Services/UserManagerCompat.cs`: resolve the accessor once by name, bind it
+as an open delegate over the interface, cache it in a static. The file must never name
+either member in code — a compile-time reference would reintroduce exactly the dependency
+it removes. Result: the IL now references **46** Jellyfin members and **all 46 resolve on
+10.11.6, .8, .9 and .11**, with the shim returning users on each.
+
+The pin stays at 10.11.6, but the reason is now the right one: it is the **oldest**
+supported ABI, and compiling against the oldest is what keeps one artifact working across
+the line. Compiling against the newest would silently raise the floor.
+
+Limit worth stating: the harness proves the member is *absent*, not that the runtime
+throws. The plugin still cannot be loaded here, so the failure mode is the ordinary .NET
+consequence of a missing member rather than something observed.
+
+### `PlaybackDatabaseExists` — fixed, narrowly on purpose
+
+`Repository.PlaybackDataUnavailableReason()` replaces the bare file test at both guard
+sites. It returns log-only text — the client-facing string is the controller's own
+constant, so the contract is unchanged — and distinguishes "no file" from "no
+`PlaybackActivity` table", the latter by asking `sqlite_master`. The read-only handle means
+it can neither create nor migrate what is missing.
+
+Deliberately narrow: a file that is present and has the table but fails to open for some
+other reason — locked, or not a database — still throws. Reporting a transient
+`SQLITE_BUSY` as "Playback Reporting is not installed" would be a worse answer than an
+error.
+
+Three suite tests (now **90**): the tableless database is reported unavailable *and*
+`PlaybackDatabaseExists` still returns true for it, which is precisely why the file test
+was not enough; the two usable states (empty-but-correct, and populated) report no reason
+at all; and a missing file is still reported, by the same call, without being created.
+Non-vacuity checked by mutation — reverting the guard to file-only kills exactly one test.
+
+### Finding 30's `DateAdded` half — answered from source: nothing was broken
+
+`PLAN.md` said this "needs a running server". It did not. It needed reading Jellyfin's
+source, and the answer is that **`BaseItem.DateCreated` already arrives as
+`DateTimeKind.Utc`**. Verified at tag `v10.11.6`, three links:
+
+1. `Jellyfin.Database.Providers.Sqlite/SqliteDatabaseProvider.cs:113-115` —
+   `OnModelCreating` calls `modelBuilder.SetDefaultDateTimeKind(DateTimeKind.Utc)`.
+2. `.../ModelBuilderExtensions.cs:42-45` — that attaches a converter to every `DateTime`
+   **and** `DateTime?` property; `BaseItemEntity.DateCreated` is the nullable one.
+3. `.../ValueConverters/DateTimeKindValueConverter.cs:17` —
+   `base(v => v.ToUniversalTime(), v => DateTime.SpecifyKind(v, kind), …)`, so the
+   provider→model (read) direction is `SpecifyKind(v, Utc)`.
+
+The stored instant is genuinely UTC as well: every set-site writes `CreationTimeUtc` or
+`DateTime.UtcNow`, NFO `<dateadded>` parses with `AssumeUniversal | AdjustToUniversal`, and
+there is a 10.11 migration (`FixDates.cs`) whose stated purpose is making historical rows
+UTC. So the generic "SQLite hands back `Unspecified`" worry is explicitly neutralized, and
+`BaseItemRepository.Map` needs no `SpecifyKind` because the Kind was set upstream — reading
+the mapper alone is what makes this look unanswered.
+
+Do **not** take a trailing `Z` on Jellyfin's own `/Items` response as the evidence:
+`JsonDateTimeConverter` has the `Z` as a *literal* in its format string for the
+`Millisecond == 0` branch and emits it regardless of Kind.
+
+**What was added anyway, and why.** `Services/JellyfinTimestamps.AsUtc` normalizes at the
+four sites that read `item.DateCreated`. On any stock server it is a no-op. It exists
+because the guarantee belongs to the **SQLite provider**, not to Jellyfin's DbContext, and
+10.11 admits plugin-supplied database providers; one that never calls
+`SetDefaultDateTimeKind` would return `Unspecified` and reintroduce finding 30 silently, in
+the one direction nothing here can observe. `Unspecified` is relabelled rather than
+converted — the instant is UTC, so `ToUniversalTime` would corrupt it by the server's
+offset — and `Local` is converted.
+
+**A second half of finding 30 that was never recorded.** `DateAdded` is not only
+serialized, it is *compared*: the grace cutoff at `AnalyticsService.cs:159` against a
+`DateTime.UtcNow` bound, and D1's floor gate at `:331` against a `Utc` floor. `DateTime`
+comparison **ignores `Kind` and compares raw ticks**, so a mislabelled value fails both
+silently. Honest scale: hours against a 180-day window, so the filter effect is minor and
+the visible damage stays the display bug — but it is why the normalizer is applied before
+the cutoff and not only on the way to the wire.
+
+Two suite tests, both mutation-checked (each branch of `AsUtc`, when broken, kills a test):
+all three incoming Kinds leave the boundary as the same UTC instant, and the tick
+comparison a mislabelled `Local` value gets wrong until normalized. The second skips on a
+UTC machine and says so rather than passing vacuously. This is also the answer to Phase 6's
+note that "the suite cannot settle it": the suite cannot observe the Kind Jellyfin sends,
+but it can pin what the boundary does with each one.
+
+---
+
 ## Config surface after Phase 3
 
 | Key | Default | Range | Introduced |

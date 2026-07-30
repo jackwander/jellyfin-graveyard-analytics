@@ -156,7 +156,7 @@ namespace JellyfinGraveyardAnalytics.Services
             // *counted* for the banner's disclosure, and that count is of zero-play
             // candidates, which is not known until the mapping has run.
             var aged = candidates
-                .Where(item => item.DateCreated <= cutoff)
+                .Where(item => JellyfinTimestamps.AsUtc(item.DateCreated) <= cutoff)
                 .ToList();
 
             var mappedItems = aged.Select(item =>
@@ -228,7 +228,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     Size = totalSize,
                     FormattedSize = FormatBytes(totalSize),
                     LastPlayed = lastPlayed,
-                    DateAdded = item.DateCreated
+                    DateAdded = JellyfinTimestamps.AsUtc(item.DateCreated)
                 };
             })
             .Where(x => x != null)
@@ -485,7 +485,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     Type = item is MediaBrowser.Controller.Entities.Movies.Movie ? "Movie" : "Series",
                     Size = itemSize,
                     FormattedSize = FormatBytes(itemSize),
-                    DateAdded = item.DateCreated,
+                    DateAdded = JellyfinTimestamps.AsUtc(item.DateCreated),
                     FormattedDuration = formattedDuration,
                     PlayCount = totalPlays,
                     UniqueViewers = uniqueUsers,
@@ -585,7 +585,7 @@ namespace JellyfinGraveyardAnalytics.Services
                     LastPlayed = lastPlayed,
                     TotalDurationSeconds = totalDurationSeconds,
                     FormattedDuration = formattedDuration,
-                    DateAdded = item.DateCreated
+                    DateAdded = JellyfinTimestamps.AsUtc(item.DateCreated)
                 };
             })
             .Where(x => x != null)
@@ -618,10 +618,10 @@ namespace JellyfinGraveyardAnalytics.Services
         /// </exception>
         public JellyfinGraveyardAnalytics.Models.VisitorResponse GetVisitorActivity(string endDateString, int weeksBack)
         {
-            if (!_repository.PlaybackDatabaseExists)
+            var unavailable = _repository.PlaybackDataUnavailableReason();
+            if (unavailable is not null)
             {
-                throw new PlaybackDataUnavailableException(
-                    "The Playback Reporting plugin database was not found.");
+                throw new PlaybackDataUnavailableException(unavailable);
             }
 
             // UTC end to end: the rows are stored as naive UTC, so a local-time window
@@ -639,7 +639,7 @@ namespace JellyfinGraveyardAnalytics.Services
             System.DateTime startDate = System.DateTime.SpecifyKind(
                 endDate.AddDays(-7 * weeksBack).Date, System.DateTimeKind.Utc);
 
-            var allUsers = _userManager.Users.ToList();
+            var allUsers = UserManagerCompat.AllUsers(_userManager).ToList();
             var userDictionary = allUsers.ToDictionary(u => u.Id.ToString("N"), u => u.Username);
             var activeUserIds = new HashSet<string>();
             var userWatchTimes = new Dictionary<string, long>();

@@ -5,14 +5,18 @@ suite. They are committed because each one is the evidence behind a `PLAN.md`
 finding, and because re-deriving them costs more than keeping them.
 
 **These are not the project's test suite.** That is
-`tests/GraveyardAnalytics.Tests` (85 tests), added in Phase 6 and run in CI by
+`tests/GraveyardAnalytics.Tests` (90 tests), added in Phase 6 and run in CI by
 `.github/workflows/build.yml`.
+
+**These are not the project's test suite.** That is
+`tests/GraveyardAnalytics.Tests` (90 tests).
 
 What went there and what stayed here. The suite took the claims that are about
 *shipped behaviour* and can be stated as an assertion: `FormatBytes`, D2's play
 threshold across all four aggregates, D1's floor gate driven through the real
 `GetLeastWatchedItems`, the configuration clamps, finding 30's parse and its
-serialized form, the `TtlCache`, and that the embedded Chapel artwork is present
+serialized form and its `JellyfinTimestamps.AsUtc` boundary, the missing-table guard, the
+`TtlCache`, and that the embedded Chapel artwork is present
 under the names the controller asks for. Several of those overlap a harness here
 on purpose — the suite is the version that runs on every push, and the harness is
 the version that can be pointed at an *old* assembly with `GRAVEYARD_DLL` to show
@@ -144,6 +148,40 @@ duplicate listeners, three requests. That is the measurement Phase 7 is judged o
 Caveat: jsdom does not fetch `img src=x`, so `onerror` never fires there. The
 proof of execution is the injected `onmouseover` attribute and the `<img>` nodes
 themselves, not an `alert()` count.
+
+## dotnet/abi/ — would the built plugin run on this Jellyfin?
+
+```bash
+cd dotnet/abi && dotnet run                       # 5 checks, default 10.11.11
+dotnet run -p:JfVersion=10.11.6                   # any 10.11.x
+GRAVEYARD_DLL=/path/to/old/plugin.dll dotnet run -p:JfVersion=10.11.11   # non-vacuity
+```
+
+The harness that found the worst bug in this repo. It reads the **MemberRef table of the
+built assembly's IL** — every member the plugin actually calls out of a `Jellyfin.*` /
+`MediaBrowser.*` assembly, 46 of them — and asks the reference assemblies of a given
+10.11.x whether each one still exists. Then it drives `UserManagerCompat.AllUsers`
+through a `DispatchProxy` stub, because that shim binds by name at runtime and nothing at
+compile time can tell you it works.
+
+Why this class of bug needs a harness at all: a removed member is **not a build error**.
+The plugin compiles against its pinned reference assemblies, `manifest.json`'s `targetAbi`
+is a *minimum* so the server loads it regardless, and the failure only arrives when the
+code path is first executed. Nothing else here would have caught it.
+
+What it found: `IUserManager.Users` existed through **10.11.8** and was replaced by
+`GetUsers()` in **10.11.9**. The two never coexist, so no single compiled call reaches
+both, and the shipped plugin — compiled against 10.11.6 — carried IL referencing
+`get_Users`. On any 10.11.9+ server it loaded and then died the moment the Guestbook was
+opened. Measured in both directions: pointed at the pre-shim assembly it reports 47 refs
+with `get_Users` **missing on 10.11.9 and 10.11.11 and present on 10.11.8**; pointed at the
+current one, 46 refs and **0 missing on all four**, with the shim returning users on each.
+
+Caveat worth keeping straight, in the spirit of the rest of this file: this proves the
+member is *absent*, not that the runtime throws — the plugin still cannot be loaded here.
+The failure mode is the ordinary .NET consequence of a missing member, not something
+observed. It also says nothing about types the reference packages do not ship, and it
+reports how many of those it skipped rather than counting them as passes.
 
 ## dotnet/formatbytes/ — old vs new, side by side
 

@@ -410,7 +410,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
                             tracearrData.Sessions.Select(s => s.Visitor),
                             StringComparer.OrdinalIgnoreCase);
 
-                        tracearrData.Ghosts = _userManager.Users
+                        tracearrData.Ghosts = Services.UserManagerCompat.AllUsers(_userManager)
                             .Select(u => u.Username)
                             .Where(name => !active.Contains(name))
                             .ToList();

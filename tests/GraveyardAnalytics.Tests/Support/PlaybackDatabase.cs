@@ -77,6 +77,26 @@ public sealed class PlaybackDatabase : IDisposable
     }
 
     /// <summary>
+    /// A real database file that carries no <c>PlaybackActivity</c> table — Playback Reporting
+    /// having created its database before its schema. The file test alone cannot tell this
+    /// apart from a working install.
+    /// </summary>
+    public void CreateWithoutPlaybackTable()
+    {
+        using var connection = new SqliteConnection($"Data Source={DatabasePath}");
+        connection.Open();
+
+        // Something has to be created, or SQLite leaves a zero-byte file that is not yet a
+        // database — a different failure, and not the one under test.
+        using var create = connection.CreateCommand();
+        create.CommandText = "CREATE TABLE IF NOT EXISTS SomeOtherTable (Id INTEGER PRIMARY KEY)";
+        create.ExecuteNonQuery();
+
+        connection.Close();
+        SqliteConnection.ClearAllPools();
+    }
+
+    /// <summary>
     /// One session. <paramref name="playDurationSeconds"/> is seconds, matching the column.
     /// </summary>
     public void AddSession(

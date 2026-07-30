@@ -16,18 +16,31 @@ plan is complete; there is no next phase. Results and evidence for each phase ar
 recorded in `PLAN.md` under a "Phase N results" heading — read those before
 reopening a finding.
 
-Three things carried past Phase 6 and are **still open** after Phase 7, all written
-up in "Phase 6 results":
+The three items that Phase 6 left open were **all closed on 2026-07-30**, in a pass
+after Phase 7. Written up in `PLAN.md` under "Post-plan: the three carried items".
+Do not reopen them from the older "Phase 6 results" text, which still describes them
+as open:
 
-- **Finding 30's `DateAdded` half is still open.** It comes straight from Jellyfin
-  and its `DateTimeKind` cannot be observed here — do not normalize it on a guess.
-  The xUnit suite cannot settle it either: it constructs `Movie` objects itself, so
-  the `Kind` it sees is the one the test wrote. This needs a running server.
-- **`PlaybackDatabaseExists` is `File.Exists` only**, so a database present but
-  missing the `PlaybackActivity` table still gives a 500 rather than the actionable
-  400. The suite covers the missing-file and empty-table cases, not this one.
-- **The `Jellyfin.Controller` pin stays at 10.11.6.** Phase 6 was to decide; the
-  decision is no. See the pin note below.
+- **Finding 30's `DateAdded` half is answered: there was nothing to fix.**
+  `BaseItem.DateCreated` arrives as `DateTimeKind.Utc`, guaranteed by Jellyfin's
+  SQLite provider installing a value converter whose read direction is
+  `DateTime.SpecifyKind(v, Utc)` over every `DateTime`/`DateTime?`. Verified at tag
+  `v10.11.6`: `SqliteDatabaseProvider.cs:113-115`, `ModelBuilderExtensions.cs:42-45`,
+  `ValueConverters/DateTimeKindValueConverter.cs:17`. The stored instant is UTC too.
+  A `Services/JellyfinTimestamps.AsUtc` boundary was added anyway — a no-op on any
+  stock server — because that guarantee is the *provider's* and 10.11 admits
+  plugin-supplied providers. Read its remarks before touching it.
+- **`PlaybackDatabaseExists` is still `File.Exists`, and that is now correct**: the
+  guard callers use is `Repository.PlaybackDataUnavailableReason()`, which also
+  checks `sqlite_master` for the `PlaybackActivity` table. Deliberately narrow — it
+  does not swallow lock or not-a-database errors, because reporting `SQLITE_BUSY` as
+  "Playback Reporting is not installed" is worse than an error.
+- **The pin stays at 10.11.6, for a different reason than before.** It is now the
+  *oldest supported* ABI, which is what keeps one artifact loadable across 10.11.x —
+  not a workaround. `IUserManager.Users` was removed in **10.11.9**, and the plugin
+  shipped IL calling it, so the Guestbook died on every current server;
+  `Services/UserManagerCompat.cs` resolves that accessor by name. **That file must
+  not name either member in code.** `tests/harness/dotnet/abi` guards it.
 
 Some findings changed on contact with reality. **Finding 3 belonged to no phase**
 and was fixed in Phase 5, since item 19 rewrote the same lines. **Finding 30 was
@@ -56,10 +69,11 @@ store it in the repo.
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
 installed, so the plugin can be built but **not loaded** here.
 
-**The test suite is `tests/GraveyardAnalytics.Tests` (85 tests, `net10.0`).** Added
+**The test suite is `tests/GraveyardAnalytics.Tests` (90 tests, `net10.0`).** Added
 in Phase 6, run in CI on every push. It covers `FormatBytes`, D2's play threshold
 over a real SQLite file, D1's floor gate through the real `GetLeastWatchedItems`,
-the configuration clamps, finding 30's parse and its serialized form, the
+the configuration clamps, finding 30's parse and its serialized form and the
+`JellyfinTimestamps.AsUtc` boundary, the missing-`PlaybackActivity`-table guard, the
 `TtlCache`, and the embedded Chapel artwork. Its non-vacuity was checked by
 mutating the source, not asserted — if you add to it, do the same.
 
@@ -69,15 +83,19 @@ mutating the source, not asserted — if you add to it, do the same.
 `tests/harness/README.md` before trusting or extending them — the webhook probes
 are a *mirror* of controller logic that must be updated alongside it.
 
-Expected results, so a regression is obvious: suite **85**; dashboard `xss` 32,
-`actions` 24, `dates` 6, `tabs` 32; dotnet `repository` 27, `di` 19, `ttlcache` 12,
-`visitormap` 21; `formatbytes` and `probes` print tables rather than counts.
+Expected results, so a regression is obvious: suite **90**; dashboard `xss` 32,
+`actions` 24, `dates` 6, `tabs` 32; dotnet `abi` 5 (per ABI), `repository` 27,
+`di` 19, `ttlcache` 12, `visitormap` 21; `formatbytes` and `probes` print tables
+rather than counts.
 
-The `Jellyfin.Controller` / `Jellyfin.Model` references are **pinned to
-10.11.6**. Do not restore the floating `10.11.*-*`: it resolves to 10.11.11,
-which removed `IUserManager.Users` and breaks the build from a clean checkout
-(`AnalyticsService.cs:429`). Phase 6 considered moving and declined — it is a code
-change, not a build one.
+The `Jellyfin.Controller` / `Jellyfin.Model` references are **pinned to 10.11.6
+because that is the oldest server supported** — compiling against the oldest ABI is
+what keeps one artifact loadable across the whole 10.11.x line. Do not restore the
+floating `10.11.*-*`: it resolves to the newest, which both breaks a clean checkout
+and would silently raise the floor. Any Jellyfin API added after 10.11.6 has to be
+reached the way `Services/UserManagerCompat.cs` reaches `GetUsers()` — by name at
+runtime, never a compile-time reference — and `tests/harness/dotnet/abi` is what
+proves the built assembly still resolves everywhere.
 
 ## Build and test
 

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Point this at any 10.11.x to ask whether the built plugin would work on it:
+      dotnet run -p:JfVersion=10.11.11
+    JfVersion defaults below. The plugin itself is loaded from GRAVEYARD_DLL, or from the
+    Release output if that is unset, so an *old* assembly can be checked too.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <AssemblyName>abi</AssemblyName>
+    <JfVersion Condition="'$(JfVersion)' == ''">10.11.11</JfVersion>
+    <!-- Reference assemblies built for net9.0; loading them from net10.0 is the arrangement
+         the test project already uses. -->
+    <NoWarn>NU1701</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Jellyfin.Controller" Version="$(JfVersion)" />
+    <PackageReference Include="Jellyfin.Model" Version="$(JfVersion)" />
+  </ItemGroup>
+
+</Project>

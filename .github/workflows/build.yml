@@ -62,6 +62,17 @@ jobs:
           node dates.test.mjs
           node tabs.test.mjs
 
+      # A Jellyfin member removed in a later 10.11.x is not a build error: the plugin compiles
+      # against its pinned reference assemblies, targetAbi is a minimum so the server loads it
+      # anyway, and the failure only arrives when that code path runs. IUserManager.Users went
+      # this way in 10.11.9 and shipped broken. Checked at both ends of the supported range:
+      # the pin itself, and the newest release known when this was written.
+      - name: ABI compatibility across the 10.11.x range
+        working-directory: tests/harness/dotnet/abi
+        run: |
+          dotnet run -p:JfVersion=10.11.6
+          dotnet run -p:JfVersion=10.11.11
+
       - name: Publish
         run: >
           dotnet publish JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj

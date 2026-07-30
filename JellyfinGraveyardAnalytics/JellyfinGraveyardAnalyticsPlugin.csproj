@@ -33,11 +33,16 @@
 
   <ItemGroup>
     <!--
-      Pinned, not floating. "10.11.*-*" resolved to 10.11.11, which removed
-      IUserManager.Users and broke the build from a clean checkout; local builds only
-      kept working because obj/project.assets.json still held 10.11.6. Phase 6 kept the
-      pin: moving to the newer API is a code change, not a build change, and CI and a
-      fresh clone have to build the same thing this tree does.
+      Pinned, not floating, and deliberately pinned to the *oldest* server this plugin
+      supports. Compiling against the oldest ABI is what keeps one artifact loadable across
+      the whole 10.11.x line; compiling against the newest would silently raise the floor.
+
+      "10.11.*-*" resolved to 10.11.11, which removed IUserManager.Users and broke the build
+      from a clean checkout. That break was the visible half of a worse one: the *shipped*
+      plugin called the removed member, so it loaded on a 10.11.9+ server (targetAbi is a
+      minimum) and then failed when the Guestbook was opened. Services/UserManagerCompat.cs
+      resolves that accessor by name instead, so the pin no longer decides which servers work
+      — tests/harness/dotnet/abi checks the built assembly against several 10.11.x releases.
     -->
     <PackageReference Include="Jellyfin.Controller" Version="10.11.6" />
     <PackageReference Include="Jellyfin.Model" Version="10.11.6" />

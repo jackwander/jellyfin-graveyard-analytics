@@ -172,4 +172,64 @@ public class PlayThresholdTests : IDisposable
         // The point of the assertion: the failed read left no file behind.
         Assert.False(File.Exists(missing.DatabasePath));
     }
+
+    /// <summary>
+    /// The gap the file test left. A database that exists but carries no
+    /// <c>PlaybackActivity</c> table passed the old guard, reached the queries, and surfaced as
+    /// a 500 — where the admin needed the actionable 400. The guard now names the table.
+    /// </summary>
+    [Fact]
+    public void ADatabaseWithNoPlaybackTableIsReportedUnavailableRatherThanQueried()
+    {
+        using var tableless = new PlaybackDatabase();
+        tableless.CreateWithoutPlaybackTable();
+
+        var repository = tableless.Repository();
+
+        // Precisely why the file test was not enough: by that measure this database is fine.
+        Assert.True(repository.PlaybackDatabaseExists);
+
+        var reason = repository.PlaybackDataUnavailableReason();
+        Assert.NotNull(reason);
+        Assert.Contains("PlaybackActivity", reason, StringComparison.Ordinal);
+
+        // And the state it must not be confused with: querying it still throws, which is what
+        // the guard exists to get in front of.
+        Assert.ThrowsAny<Exception>(() => repository.GetItemPlayCounts(120));
+    }
+
+    /// <summary>
+    /// The two states that must not report as unavailable: a populated database, and the
+    /// empty-but-correct one a fresh Playback Reporting install leaves.
+    /// </summary>
+    [Fact]
+    public void AUsableDatabaseReportsNoReasonAtAll()
+    {
+        using var empty = new PlaybackDatabase();
+        empty.CreateEmpty();
+        Assert.Null(empty.Repository().PlaybackDataUnavailableReason());
+
+        using var populated = new PlaybackDatabase();
+        populated.CreateEmpty();
+        populated.AddSession(DateTime.UtcNow, Guid.NewGuid().ToString("N"), Guid.NewGuid().ToString("N"), 600);
+        Assert.Null(populated.Repository().PlaybackDataUnavailableReason());
+    }
+
+    /// <summary>
+    /// A missing file must still be reported, and by the same call — the two failures differ
+    /// only in the log text, and the caller has one guard rather than two.
+    /// </summary>
+    [Fact]
+    public void AMissingDatabaseIsReportedByTheSameGuard()
+    {
+        using var missing = new PlaybackDatabase();
+
+        var reason = missing.Repository().PlaybackDataUnavailableReason();
+
+        Assert.NotNull(reason);
+        Assert.Contains("not found", reason, StringComparison.Ordinal);
+
+        // Finding 3 again: asking the question must not create the file.
+        Assert.False(File.Exists(missing.DatabasePath));
+    }
 }

@@ -230,10 +230,10 @@ namespace JellyfinGraveyardAnalytics.Services
                 };
             }
 
-            if (!_repository.PlaybackDatabaseExists)
+            var unavailable = _repository.PlaybackDataUnavailableReason();
+            if (unavailable is not null)
             {
-                throw new PlaybackDataUnavailableException(
-                    "The Playback Reporting plugin database was not found.");
+                throw new PlaybackDataUnavailableException(unavailable);
             }
 
             var threshold = config.MinPlayDurationSeconds;
