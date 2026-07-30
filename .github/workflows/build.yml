@@ -60,6 +60,7 @@ jobs:
           node xss.test.mjs
           node actions.test.mjs
           node dates.test.mjs
+          node tabs.test.mjs
 
       - name: Publish
         run: >

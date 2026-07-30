@@ -11,12 +11,13 @@ commit `71a01f7` — 23 findings with `file:line` refs, two locked decisions (D1
 Morgue definition, D2 play threshold), and eight phases with done-when criteria.
 Do not re-derive the findings or re-litigate D1/D2.
 
-Current position: **Phases 0-6 done, including the Phase 5 addendum. Only Phase 7
-remains** — the optional dashboard rewrite (item 26). Phases run in order. Results
-and evidence for each finished phase are recorded in `PLAN.md` under a "Phase N
-results" heading — read those before reopening a finding.
+Current position: **all phases done — 0-7, including the Phase 5 addendum.** The
+plan is complete; there is no next phase. Results and evidence for each phase are
+recorded in `PLAN.md` under a "Phase N results" heading — read those before
+reopening a finding.
 
-Three things carried past Phase 6, all written up in "Phase 6 results":
+Three things carried past Phase 6 and are **still open** after Phase 7, all written
+up in "Phase 6 results":
 
 - **Finding 30's `DateAdded` half is still open.** It comes straight from Jellyfin
   and its `DateTimeKind` cannot be observed here — do not normalize it on a guess.
@@ -68,8 +69,8 @@ mutating the source, not asserted — if you add to it, do the same.
 `tests/harness/README.md` before trusting or extending them — the webhook probes
 are a *mirror* of controller logic that must be updated alongside it.
 
-Expected results, so a regression is obvious: suite **85**; dashboard `xss` 31,
-`actions` 17, `dates` 6; dotnet `repository` 27, `di` 19, `ttlcache` 12,
+Expected results, so a regression is obvious: suite **85**; dashboard `xss` 32,
+`actions` 24, `dates` 6, `tabs` 32; dotnet `repository` 27, `di` 19, `ttlcache` 12,
 `visitormap` 21; `formatbytes` and `probes` print tables rather than counts.
 
 The `Jellyfin.Controller` / `Jellyfin.Model` references are **pinned to
@@ -120,6 +121,19 @@ the native `runtimes/` tree.
   `"Leaving Soon: The Chapel"` — the constant `ChapelCollectionName`, and the
   lookup is `FindChapelCollection()`. Do not spell either out again. Its artwork is
   **embedded** (`Resources/*.jpg`); the plugin makes no outbound HTTP of its own.
+- `WebUI/dashboard.html` was rewritten in Phase 7 and has rules that are easy to
+  undo by accident. It holds **zero `style="…"` attributes and zero
+  `element.style.…` writes** — styling is classes in the page's own `<style>`
+  block, every rule scoped to `#GraveyardAnalyticsPage`, and show/hide is the
+  `hidden` attribute. There is **one table**: a column exists once, in the per-tab
+  descriptor, and full-width rows take their `colSpan` from it — do not reintroduce
+  a column-count constant. State lives in the module closure;
+  `window.GraveyardDashboard` is the only global, exists for the jsdom harnesses,
+  and the page never reads it — do not add a second. Listeners register once at
+  script evaluation, **never inside `viewshow`** (finding 7); Jellyfin fires it on
+  every return to the page. Every fetch needs a `.catch` that renders the failure,
+  and a response is only rendered if its `state.request` generation is still
+  current.
 - Release flow is `./release.sh vX.X.X.X --changelog "…"`. It stamps the version
   into the csproj and `build.yaml`, publishes, zips, and patches `manifest.json`
   (checksum + UTC timestamp) itself — no hand-editing. `--dry-run` builds and

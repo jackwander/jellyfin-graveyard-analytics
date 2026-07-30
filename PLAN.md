@@ -1152,13 +1152,118 @@ harness still at its documented count — dashboard `xss` 31, `actions` 17, `dat
   `IUserManager.Users`, which `AnalyticsService.cs:429` uses, so moving is a code
   change and not a build one. Deferred with the pin's comment updated to say so.
 
-### Phase 7 *(optional)* — Dashboard rewrite
+### Phase 7 *(optional)* — Dashboard rewrite — **DONE 2026-07-30**
 
 26. Extract inline styles into the existing `<style>` block as classes; replace
     the three duplicated `<thead>` blocks with one table driven by a per-tab
     column descriptor; module-scoped state instead of `window.*`; register
     listeners once, outside `viewshow` *(fixes 7)*; loading / empty / error
     states with `.catch` on every fetch.
+
+**Done when:** the page holds zero `style="…"` attributes and zero inline event
+handlers; a column exists in exactly one place; three `viewshow` dispatches
+followed by one keystroke issue exactly one request; every fetch has a `.catch`
+and says so on screen.
+
+#### Phase 7 results
+
+All five parts done. `dashboard.html` is 813 → 1195 lines, of which the stylesheet
+is 345 — the growth is markup and colour moving into named rules, and the script
+itself is shorter than the one it replaced. Clean build, 0 warnings; xUnit still
+**85/85**.
+
+1. **Inline styles: 92 attributes and 56 `element.style.…` writes → 0 of each.**
+   Both greps return zero, which is the point: half the styling was not in the
+   markup at all but written from the script at render time. Every
+   rule is scoped to `#GraveyardAnalyticsPage`, because this markup is injected
+   into Jellyfin's own dashboard — an unscoped `.gy-table td` would still be
+   harmless but an unscoped `[hidden]` would not. Two visible bugs fell out of the
+   move rather than being looked for:
+   - The per-tab tab accents were inline, so they **beat** `.active-tab` and the
+     Guestbook tab stayed green while selected. `.gy-tab.is-active` is two classes
+     and now wins for every tab.
+   - There was one `:hover` rule for every button, so **Pardon and Save previewed
+     as destructive** — a green control flashing `#aa2e25`. They have their own
+     hover now. This is also why the old hover rule needed `!important` on three
+     properties: it was out-shouting the inline variants. No `!important` survives
+     except the `[hidden]` guard, which needs it to beat `display:flex`.
+2. **One table.** `#tableHead` and `#tableBody`, both filled from a per-tab column
+   descriptor (`{ label, cell }`). The media set is nine columns, the Morgue reuses
+   six of the same objects, the Guestbook is seven. Adding a column is one edit.
+   The descriptor also supplies the `colSpan` for every full-width row — loading,
+   empty, error, the truncation notice — which retires the hand-kept
+   `VISITOR_COLUMNS = 7` constant; `xss.test.mjs` now pins that `colSpan` against
+   the header the same render produced.
+3. **State is module-scoped.** `window.currentTab` and the six `window.render*` /
+   `window.switchTab` / `window.fetchAndRender` globals are gone. One global
+   remains, `window.GraveyardDashboard`, and the page never reads it — it exists so
+   the jsdom harnesses can drive a renderer directly, and it is labelled as such.
+   The six static `onclick=` attributes Phase 1 deliberately left behind are gone
+   too: the tab bar uses one delegated listener over `data-tab`, and Save has an id.
+4. **Finding 7 is fixed, and measured.** Listeners register once, at script
+   evaluation; `viewshow` now only refreshes (re-read the config, re-enter the
+   current tab). `actions.test.mjs` dispatches three `viewshow`s, fires one
+   keystroke, and counts requests: **1**. Against the page as Phase 6 left it the
+   same check reports **3**. That is the finding, in a number, in both directions.
+5. **Loading / empty / error.** Loading and error are rows in the same table
+   rather than a spinner elsewhere, because the failure mode was a fetch leaving
+   the *previous* tab's rows on screen looking current. Every fetch has a `.catch`
+   — the two table fetches, the config load, and the save — and so does each of the
+   three row actions. The error text prefers the server's own `{ message }` when the
+   rejection carries a readable body, which is what keeps Phase 1's actionable
+   "Playback Reporting is not installed" reaching the admin, and falls back to a
+   generic line plus the status otherwise. A failed fetch also clears the total
+   card: it is a claim about rows that are no longer on screen.
+
+**One thing this phase had to add that item 26 did not ask for.** With three tables
+a late response rendered into its own tab's table, wrong but contained. With one
+table it would render the wrong *shape* of row under the wrong header. `state.request`
+is a generation counter, bumped on every tab switch and every fetch; a stale
+response is dropped. Covered by a check that starts a slow `Living` fetch, switches
+to the Guestbook, then releases it.
+
+Smaller things fixed in passing: `formatDay` returns its fallback for an
+unparseable date instead of printing `Invalid Date`; the media table has an empty
+state at all (it had none); `<th>` carries `scope="col"`; the config form swallows
+an Enter keypress instead of reloading the page; and a failed *save* now says so
+rather than failing silently.
+
+**A stale claim in `tests/harness/README.md`, found while updating it.** It said
+`xss.test.mjs` against `71a01f7` "fails 12". That run had been broken since
+**Phase 2** — item 7 unified the two visitor tables and renamed the tbody, so from
+then on the harness died on a null lookup partway through rather than reporting,
+and nothing re-ran it to notice. The shared `support.mjs` adapter now asks a
+revision what it `supports` and prints a `SKIP` for the rest, so a degraded run
+cannot read as a complete one. The restored figure is **7 failures, 2 sections
+skipped** — including `attrs=onclick,onmouseover,class,style` on an action button,
+which is still the proof that old `:569` injected a live handler.
+
+**And one about the harnesses themselves.** The old page wrote the total card with
+`innerText`, which **jsdom does not implement** — so the assignment landed on an
+expando and every pre-Phase-7 card assertion was reading back its own input without
+touching the DOM. Those checks were weaker than they read. The page uses
+`textContent` now and the assertions are real; the adapter prefers the expando only
+when one exists, so the same file still drives older revisions. The Last Breath
+verdict moved from an inline colour to a class for the same reason — asserting it no
+longer depends on jsdom resolving the cascade.
+
+**A fourth dashboard harness, `tabs.test.mjs` (32 checks), added and wired into
+CI.** It is the only one that drives the page the way an admin does — clicking the
+tab bar instead of calling a renderer — and it exists because this phase replaced
+six inline `onclick` attributes and ten hand-written `style.display` assignments with
+one delegated listener and one block of `hidden` flags, and nothing asserted that
+mapping. Per tab: the endpoint with its filter values, the column count, the heading,
+that exactly one tab reads as active, and the *complete* visibility map — anything a
+tab does not list is asserted hidden, so a panel someone forgets to hide on the other
+five fails rather than lingering. It found one bug, in its own first draft rather than
+in the page (an equality check against a URL carrying today's date).
+
+Harness counts after this phase: `xss` **32**, `actions` **24**, `dates` **6**,
+`tabs` **32**.
+
+Not done, deliberately: the Tracearr Rules tab is still a placeholder (listed under
+*Deferred*), and the row-exit animations are classes now but still fire before the
+refetch rather than being driven by it.
 
 ---
 

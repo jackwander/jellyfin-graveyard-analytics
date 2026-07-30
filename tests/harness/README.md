@@ -43,9 +43,10 @@ webhook logic changes, the mirror in `dotnet/probes/Program.cs` must change too.
 
 ```bash
 cd dashboard && npm install
-node xss.test.mjs        # 31 checks
-node actions.test.mjs    # 17 checks
+node xss.test.mjs        # 32 checks
+node actions.test.mjs    # 24 checks
 node dates.test.mjs      #  6 checks
+node tabs.test.mjs       # 32 checks
 ```
 
 Loads `WebUI/dashboard.html`, dispatches `viewshow`, then calls the real
@@ -55,6 +56,39 @@ Covers: media titles and visitor `Visitor` / `Subject` / `Device` / `Player`
 rendering as literal text; no injected `<img>`; action buttons carrying no inline
 handler; per-tab column counts (morgue 6, others 9); a `0` value rendering as
 `"0"` rather than blank; empty states; the coverage banner in all three states.
+
+`support.mjs` is shared plumbing, not a test. Phase 7 rewrote the page — one table
+driven by a per-tab column descriptor, module-scoped state behind a single
+`window.GraveyardDashboard` seam, and the `hidden` attribute instead of inline
+`style.display` — so the differences between revisions live in one adapter rather
+than three times over. Two things it records:
+
+- The old file wrote the total card with `innerText`, which **jsdom does not
+  implement**. The assignment landed on an expando, so the pre-Phase-7 card
+  assertions were reading back their own input and never touched the DOM. The page
+  uses `textContent` now and the adapter prefers the expando only when one exists,
+  so older revisions still read.
+- The Last Breath verdict was an inline colour and is a class (`gy-dead` /
+  `gy-alive`) now, so `dates.test.mjs` asserts the class and does not need jsdom to
+  resolve the cascade. It still accepts the old colour.
+
+`tabs.test.mjs` is the fourth, added by Phase 7. It is the only one that drives the
+page the way an admin does — clicking the tab bar rather than calling a renderer —
+and it asserts, per tab, the endpoint requested with its filter values, the column
+count of the one table (9 / 6 / 9 / 7, and no request at all from the two
+configuration tabs), the heading, that exactly one tab reads as active, and the
+**complete** panel visibility map: anything a tab does not list is asserted hidden,
+so a new panel that someone forgets to hide on the other five fails rather than
+lingering. Plus that saving with the engine switched off takes the Tracearr tab away
+*and* moves off it. It skips entirely on a pre-Phase-7 file: none of the panel ids
+it names existed.
+
+Phase 7 also added, in `actions.test.mjs`: **finding 7 measured** — three
+`viewshow` dispatches, then one keystroke, and a count of the fetches it caused;
+the loading row; the error row and that it names the status and prefers the
+server's own `{ message }`; that a failed fetch clears the total card; and that a
+response arriving after its tab was left is dropped, which matters now that one
+table serves every tab.
 
 Since Phase 5 item 20, `actions.test.mjs` also drives `renderTotals` over the
 split response fields: the per-tab label and its "(listed rows)" qualifier when
@@ -81,13 +115,31 @@ built from explicit calendar components and formatted the same way the page form
 so the runner's *locale* does not matter — only which day it lands on.
 
 All three accept a path argument, which is how the checks were shown to be
-non-vacuous — against the pre-Phase-1 file, `xss.test.mjs` **fails 12**,
-including an injected live `onmouseover` handler:
+non-vacuous:
 
 ```bash
 git show 71a01f7:JellyfinGraveyardAnalytics/WebUI/dashboard.html > /tmp/old.html
-node xss.test.mjs /tmp/old.html    # expect failures
+node xss.test.mjs /tmp/old.html         # 6/13, 2 skipped — expect failures
+
+git show 55b2a2a:JellyfinGraveyardAnalytics/WebUI/dashboard.html > /tmp/pre7.html
+node actions.test.mjs /tmp/pre7.html    # 17/19, 1 skipped — finding 7 fails at 3 fetches
 ```
+
+Against `71a01f7`, `xss.test.mjs` **fails 7** — including
+`attrs=onclick,onmouseover,class,style` on an action button, i.e. the attribute
+breakout at old `:569` demonstrably injects a live event handler.
+
+That run had **silently stopped working**. This README claimed "fails 12", but
+Phase 2 item 7 unified the two visitor tables and renamed the tbody, so from then
+on the harness died on a null lookup partway through instead of reporting; the
+claim went unchecked because nothing re-ran it. The adapter now reports what a given
+revision *has* (`supports`) and skips the rest with a printed `SKIP`, so a
+degraded run cannot read as a complete one. Seven failures, two skipped sections —
+the visitor tables and the coverage banner, neither of which existed at `71a01f7`.
+
+Against `55b2a2a` (the page as Phase 6 left it), `actions.test.mjs` fails the
+finding 7 pair at **`fetches=3`** — one keystroke, three viewshows' worth of
+duplicate listeners, three requests. That is the measurement Phase 7 is judged on.
 
 Caveat: jsdom does not fetch `img src=x`, so `onerror` never fires there. The
 proof of execution is the injected `onmouseover` attribute and the `<img>` nodes

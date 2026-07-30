@@ -10,9 +10,7 @@
 // UTC machine — which is exactly the configuration this bug hides on, and plenty of servers run
 // that way.
 
-import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 const ZONE = 'America/Los_Angeles';   // UTC-8/-7: late-UTC instants fall on the previous local day
@@ -26,13 +24,11 @@ if (process.env.TZ !== ZONE) {
 }
 
 const { JSDOM } = await import('jsdom');
+const { adapt, headers, htmlPath, read, reporter } = await import('./support.mjs');
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const HTML = process.argv[2]
-  ? resolve(process.cwd(), process.argv[2])
-  : resolve(HERE, '../../../JellyfinGraveyardAnalytics/WebUI/dashboard.html');
+const HTML = htmlPath(process.argv);
 
-const dom = new JSDOM(readFileSync(HTML, 'utf8'), { runScripts: 'dangerously' });
+const dom = new JSDOM(read(HTML), { runScripts: 'dangerously' });
 const { window } = dom;
 const doc = window.document;
 
@@ -46,8 +42,8 @@ window.ApiClient = {
 
 doc.getElementById('GraveyardAnalyticsPage').dispatchEvent(new window.Event('viewshow'));
 
-const results = [];
-const check = (name, ok, detail) => results.push({ name, ok, detail });
+const ui = adapt(window);
+const { check, finish } = reporter();
 
 // 19:30 on 3 March in Los Angeles (UTC-8; before US DST begins on the 8th) — so the correct local
 // calendar day is the 3rd, while the zoneless string is read as 03:30 on the 4th. One instant,
@@ -63,21 +59,31 @@ const base = {
 };
 
 // Located by its header rather than by a hardcoded index, so moving the column fails loudly
-// instead of silently passing on whatever cell now sits there. The colour comes back too: this
-// cell is also a verdict, not only a date.
-function renderLastBreath(lastPlayed) {
-  window.currentTab = 'living';
-  window.renderMediaTable([{ ...base, LastPlayed: lastPlayed }]);
+// instead of silently passing on whatever cell now sits there. The verdict comes back too: this
+// cell is also a judgement, not only a date.
+//
+// Phase 7 moved that judgement out of an inline colour and into a class — `gy-dead` /
+// `gy-alive` — so it can be read without decoding hex, and asserted without jsdom having to
+// resolve the cascade. Older revisions are read through their inline colour instead.
+const DEAD = { class: 'gy-dead', color: 'rgb(207, 102, 121)' };
+const ALIVE = { class: 'gy-alive', color: 'rgb(170, 170, 170)' };
 
-  const tbody = doc.getElementById('leastWatchedTableBody');
-  const headers = [...tbody.closest('table').querySelectorAll('thead th')]
-    .map(th => th.textContent.trim());
-  const index = headers.findIndex(h => /last breath/i.test(h));
+function renderLastBreath(lastPlayed) {
+  ui.setTab('living');
+  ui.renderMediaTable([{ ...base, LastPlayed: lastPlayed }]);
+
+  const tbody = ui.mediaBody();
+  const index = headers(tbody).findIndex(h => /last breath/i.test(h));
   const cells = tbody.querySelectorAll('td');
 
-  return index >= 0
-    ? { index, text: cells[index].textContent.trim(), color: cells[index].style.color }
-    : { index, text: '(no Last Breath column)', color: '' };
+  if (index < 0) return { index, text: '(no Last Breath column)', verdict: '' };
+
+  const cell = cells[index];
+  const verdict = cell.classList.contains(DEAD.class) || cell.style.color === DEAD.color ? 'dead'
+    : cell.classList.contains(ALIVE.class) || cell.style.color === ALIVE.color ? 'alive'
+      : 'none';
+
+  return { index, text: cell.textContent.trim(), verdict };
 }
 
 const fixed = renderLastBreath(INSTANT_UTC);
@@ -115,17 +121,11 @@ const live = renderLastBreath(iso(new Date(cut.getTime() + 36e5)));   // an hour
 const dead = renderLastBreath(iso(new Date(cut.getTime() - 36e5)));   // an hour past it
 
 check('an hour inside twelve months reads as alive, an hour past it reads as dead',
-  live.color === 'rgb(170, 170, 170)' && dead.color === 'rgb(207, 102, 121)',
-  `live=${live.text}/${live.color} dead=${dead.text}/${dead.color}`);
+  live.verdict === 'alive' && dead.verdict === 'dead',
+  `live=${live.text}/${live.verdict} dead=${dead.text}/${dead.verdict}`);
 
 check('so an offset-sized error is enough to cross that verdict, not just misprint a day',
   Math.abs(new Date(iso(cut)).getTimezoneOffset()) * 60000 > 36e5,
   `offset=${new Date(iso(cut)).getTimezoneOffset()}min vs the 60min margin tested`);
 
-let failed = 0;
-for (const r of results) {
-  if (!r.ok) failed++;
-  console.log(`${r.ok ? 'PASS' : 'FAIL'}  ${r.name}${r.ok ? '' : '   <-- ' + r.detail}`);
-}
-console.log(`\n${results.length - failed}/${results.length} passed  (TZ=${process.env.TZ})`);
-process.exit(failed ? 1 : 0);
+finish(`  (TZ=${process.env.TZ})`);

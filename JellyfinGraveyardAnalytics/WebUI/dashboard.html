@@ -2,122 +2,123 @@
     <div class="content-primary">
         <div class="verticalSection">
 
-            <div style="border-bottom: 2px solid #333; margin-bottom: 20px; display: flex; gap: 15px; flex-wrap: wrap;">
-                <button id="tabLiving" class="graveyard-tab" onclick="window.switchTab('living')">The Sanctuary (Living)</button>
-                <button id="tabMorgue" class="graveyard-tab active-tab" onclick="window.switchTab('morgue')">The Morgue (Unwatched)</button>
-                <button id="tabChapel" class="graveyard-tab" onclick="window.switchTab('chapel')">The Chapel (Condemned)</button>
-                <button id="tabVisitors" class="graveyard-tab" onclick="window.switchTab('visitors')" style="color: #4CAF50;">The Guestbook (Visitors)</button>
-                <button id="tabSettings" class="graveyard-tab" onclick="window.switchTab('settings')" style="color: #bbb; margin-left: auto;">Settings ⚙️</button>
-                <button id="tabTracearr" class="graveyard-tab" onclick="window.switchTab('tracearr')" style="color: #00bcd4; display: none;">Tracearr Rules 📡</button>
+            <div class="gy-tabs">
+                <button type="button" id="tabLiving" class="gy-tab" data-tab="living">The Sanctuary (Living)</button>
+                <button type="button" id="tabMorgue" class="gy-tab is-active" data-tab="morgue">The Morgue (Unwatched)</button>
+                <button type="button" id="tabChapel" class="gy-tab" data-tab="chapel">The Chapel (Condemned)</button>
+                <button type="button" id="tabVisitors" class="gy-tab gy-tab--visitors" data-tab="visitors">The Guestbook (Visitors)</button>
+                <button type="button" id="tabSettings" class="gy-tab gy-tab--settings" data-tab="settings">Settings &#9881;&#65039;</button>
+                <button type="button" id="tabTracearr" class="gy-tab gy-tab--tracearr" data-tab="tracearr" hidden>Tracearr Rules &#128225;</button>
             </div>
 
-            <div style="background: rgba(0,0,0,0.2); padding: 20px; border-radius: 8px; margin-bottom: 30px;">
-                <div style="margin-bottom: 30px;">
-                    <h1 id="pageMainTitle" style="margin-bottom: 5px; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; letter-spacing: 1px;">THE GRAVEYARD</h1>
-                    <p id="pageDescription" style="color: #888; margin: 0; font-style: italic;">Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.</p>
+            <div class="gy-shell">
+                <div class="gy-header">
+                    <h1 id="pageMainTitle" class="gy-title">THE GRAVEYARD</h1>
+                    <p id="pageDescription" class="gy-subtitle">Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.</p>
                 </div>
 
-                <div id="mediaTopCard" style="background: linear-gradient(135deg, #2c3e50 0%, #000000 100%); border-left: 5px solid #666; color: white; padding: 20px; border-radius: 4px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
+                <div id="mediaTopCard" class="gy-total">
                     <div>
-                        <span id="totalWastedTitle" style="display: block; font-size: 0.9em; text-transform: uppercase; color: #aaa; letter-spacing: 2px;">Total Dead Weight</span>
-                        <span id="totalWasteValue" style="font-size: 2.5em; font-weight: bold; font-family: monospace;">0 B</span>
+                        <span id="totalWastedTitle" class="gy-total-label">Total Dead Weight</span>
+                        <span id="totalWasteValue" class="gy-total-value">0 B</span>
                         <!-- Only shown when the reclaimable figure differs from the total above,
-                             which the response now reports separately (TotalWasted vs TotalSize). -->
-                        <span id="totalWastedSubline" style="display: none; font-size: 0.85em; color: #ff9800;"></span>
+                             which the response reports separately (TotalWasted vs TotalSize). -->
+                        <span id="totalWastedSubline" class="gy-total-sub" hidden></span>
                     </div>
-                    <div style="text-align: right;">
-                        <span style="display: block; font-size: 0.8em; color: #888;">Stagnant since installation</span>
-                    </div>
-                </div>
-
-                <div id="visitorSummary" style="display: none; gap: 20px; margin-bottom: 25px;">
-                    <div style="flex: 1; background: linear-gradient(135deg, #1e3c20 0%, #000000 100%); padding: 15px; border-radius: 6px; border-left: 5px solid #4CAF50; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                        <h3 style="margin: 0 0 10px 0; color: #e0e0e0; text-transform: uppercase; font-size: 0.9em; letter-spacing: 1px;">Top Visitors (The Binge List)</h3>
-                        <ul id="leaderboardList" style="margin: 0; padding-left: 20px; color: #aaa; font-size: 0.95em;"></ul>
-                    </div>
-                    <div style="flex: 1; background: linear-gradient(135deg, #3c1e1e 0%, #000000 100%); padding: 15px; border-radius: 6px; border-left: 5px solid #cf6679; box-shadow: 0 4px 15px rgba(0,0,0,0.5);">
-                        <h3 style="margin: 0 0 10px 0; color: #e0e0e0; text-transform: uppercase; font-size: 0.9em; letter-spacing: 1px;">The Ghosts (No Activity)</h3>
-                        <p id="ghostsList" style="margin: 0; color: #aaa; font-style: italic; font-size: 0.95em;"></p>
+                    <div class="gy-total-note">
+                        <span>Stagnant since installation</span>
                     </div>
                 </div>
 
-                <div id="settingsContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333;">
-                    <h2 style="color: #e0e0e0; margin-top: 0;">Data Source Configuration</h2>
-                    <p style="color: #888; margin-bottom: 25px;">By default, Graveyard Analytics relies on the local Playback Reporting plugin. You can upgrade your data engine by connecting to a Tracearr instance for advanced, real-time analytics and webhooks.</p>
+                <div id="visitorSummary" class="gy-cards" hidden>
+                    <div class="gy-card gy-card--green">
+                        <h3 class="gy-card-title">Top Visitors (The Binge List)</h3>
+                        <ul id="leaderboardList" class="gy-card-list"></ul>
+                    </div>
+                    <div class="gy-card gy-card--red">
+                        <h3 class="gy-card-title">The Ghosts (No Activity)</h3>
+                        <p id="ghostsList" class="gy-card-text"></p>
+                    </div>
+                </div>
+
+                <div id="settingsContainer" class="gy-panel" hidden>
+                    <h2 class="gy-panel-title">Data Source Configuration</h2>
+                    <p class="gy-note">By default, Graveyard Analytics relies on the local Playback Reporting plugin. You can upgrade your data engine by connecting to a Tracearr instance for advanced, real-time analytics and webhooks.</p>
 
                     <form id="graveyardConfigForm">
 
-                        <div style="margin-bottom: 20px; display: flex; align-items: center; background: rgba(255,255,255,0.05); padding: 15px; border-radius: 6px; border-left: 4px solid #00bcd4;">
-                            <input type="checkbox" id="EnableTracearr" style="width: 20px; height: 20px; margin-right: 15px; cursor: pointer;">
+                        <div class="gy-toggle">
+                            <input type="checkbox" id="EnableTracearr" class="gy-checkbox">
                             <div>
-                                <label for="EnableTracearr" style="display: block; color: #fff; font-weight: bold; cursor: pointer; margin: 0;">Enable Tracearr Engine</label>
-                                <span style="font-size: 0.85em; color: #aaa;">Bypass the local database and fetch analytics directly from Tracearr.</span>
+                                <label for="EnableTracearr" class="gy-toggle-label">Enable Tracearr Engine</label>
+                                <span class="gy-hint">Bypass the local database and fetch analytics directly from Tracearr.</span>
                             </div>
                         </div>
 
-                        <div id="tracearrFields" style="display: none; padding-left: 20px; border-left: 2px solid #444; margin-bottom: 25px; margin-left: 10px;">
-                            <div style="margin-bottom: 15px;">
-                                <label for="TracearrUrl" style="display: block; color: #aaa; margin-bottom: 5px;">Tracearr API URL</label>
-                                <input type="text" id="TracearrUrl" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="e.g., http://tracearr:3000">
+                        <div id="tracearrFields" class="gy-subfields" hidden>
+                            <div class="gy-field">
+                                <label for="TracearrUrl" class="gy-label">Tracearr API URL</label>
+                                <input type="text" id="TracearrUrl" class="gy-input" placeholder="e.g., http://tracearr:3000">
                             </div>
-                            <div>
-                                <label for="TracearrApiKey" style="display: block; color: #aaa; margin-bottom: 5px;">Tracearr API Key</label>
-                                <input type="password" id="TracearrApiKey" style="width: 100%; max-width: 500px; padding: 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;" placeholder="trr_pub_xxxxxxxxxxxxxxx">
+                            <div class="gy-field gy-field--last">
+                                <label for="TracearrApiKey" class="gy-label">Tracearr API Key</label>
+                                <input type="password" id="TracearrApiKey" class="gy-input" placeholder="trr_pub_xxxxxxxxxxxxxxx">
                             </div>
                         </div>
 
-                        <button type="button" onclick="window.savePluginConfig()" class="exorcise-btn" style="border-color: #4CAF50; color: #4CAF50; padding: 10px 20px; font-weight: bold;">Save Configuration</button>
-                        <span id="saveConfirmation" style="color: #4CAF50; margin-left: 15px; display: none;">Saved successfully!</span>
+                        <button type="button" id="saveConfig" class="gy-btn gy-btn--save">Save Configuration</button>
+                        <span id="saveConfirmation" class="gy-saved" hidden>Saved successfully!</span>
+                        <span id="saveFailure" class="gy-failed" hidden></span>
                     </form>
                 </div>
 
-                <div id="tracearrContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #00bcd4;">
-                    <h2 style="color: #00bcd4; margin-top: 0;">Tracearr Automations & Webhooks</h2>
-                    <p style="color: #888;">Configure custom rules to automatically condemn dead weight without manual intervention.</p>
-                    <div style="background: rgba(0, 188, 212, 0.1); padding: 15px; border-radius: 4px; border-left: 4px solid #00bcd4;">
-                        <p style="margin: 0; color: #ccc;"><em>Webhook generation and Tracearr syncing will be available in the next minor patch once your backend controller is active!</em></p>
+                <div id="tracearrContainer" class="gy-panel gy-panel--accent" hidden>
+                    <h2 class="gy-panel-title gy-panel-title--accent">Tracearr Automations &amp; Webhooks</h2>
+                    <p class="gy-note">Configure custom rules to automatically condemn dead weight without manual intervention.</p>
+                    <div class="gy-callout">
+                        <p><em>Webhook generation and Tracearr syncing will be available in the next minor patch once your backend controller is active!</em></p>
                     </div>
                 </div>
 
-                <div id="mediaFilters" style="margin-bottom: 15px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap;">
-                    <input type="text" id="mediaSearch" placeholder="Search by name..." style="padding: 5px 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px; flex-grow: 1;">
-                    <div>
-                        <label for="mediaTypeFilter" style="color:#aaa;">Type:</label>
-                        <select id="mediaTypeFilter" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                <div id="mediaFilters" class="gy-filters">
+                    <input type="text" id="mediaSearch" class="gy-input gy-input--search" placeholder="Search by name...">
+                    <div class="gy-filter">
+                        <label for="mediaTypeFilter" class="gy-label gy-label--inline">Type:</label>
+                        <select id="mediaTypeFilter" class="gy-select">
                             <option value="All">All Media</option>
                             <option value="Movie" selected>Movies</option>
                             <option value="Series">Shows</option>
                         </select>
                     </div>
-                    <div>
-                        <label for="limitFilter" style="color:#aaa;">Show Top:</label>
-                        <select id="limitFilter" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                    <div class="gy-filter">
+                        <label for="limitFilter" class="gy-label gy-label--inline">Show Top:</label>
+                        <select id="limitFilter" class="gy-select">
                             <option value="10" selected>10</option>
                             <option value="20">20</option>
                             <option value="50">50</option>
                             <option value="100">100</option>
                         </select>
                     </div>
-                    <div id="barelyTouchedFilter" style="display: none; align-items: center;">
-                        <input type="checkbox" id="includeBarelyTouched" style="margin-right: 6px; cursor: pointer;">
-                        <label for="includeBarelyTouched" style="color:#aaa; cursor: pointer;">Include barely-touched (&le; 2 plays)</label>
+                    <div id="barelyTouchedFilter" class="gy-check" hidden>
+                        <input type="checkbox" id="includeBarelyTouched">
+                        <label for="includeBarelyTouched" class="gy-label gy-label--inline">Include barely-touched (&le; 2 plays)</label>
                     </div>
-                    <div id="unverifiableFilter" style="display: none; align-items: center;">
-                        <input type="checkbox" id="includeUnverifiable" style="margin-right: 6px; cursor: pointer;">
-                        <label for="includeUnverifiable" style="color:#aaa; cursor: pointer;" title="These were added before playback history begins, so they read as unwatched whether or not they were watched.">Include unverifiable (older than history)</label>
+                    <div id="unverifiableFilter" class="gy-check" hidden>
+                        <input type="checkbox" id="includeUnverifiable">
+                        <label for="includeUnverifiable" class="gy-label gy-label--inline" title="These were added before playback history begins, so they read as unwatched whether or not they were watched.">Include unverifiable (older than history)</label>
                     </div>
                 </div>
 
-                <div id="coverageBanner" style="display: none; background: rgba(255, 152, 0, 0.1); border-left: 4px solid #ff9800; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px; color: #ccc; font-size: 0.9em;"></div>
+                <div id="coverageBanner" class="gy-banner" hidden></div>
 
-                <div id="visitorFilters" style="display: none; margin-bottom: 15px; align-items: center; gap: 20px; flex-wrap: wrap;">
-                    <div>
-                        <label for="visitorEndDate" style="color: #aaa; margin-right: 5px;">End Date:</label>
-                        <input type="date" id="visitorEndDate" style="padding: 5px 10px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                <div id="visitorFilters" class="gy-filters" hidden>
+                    <div class="gy-filter">
+                        <label for="visitorEndDate" class="gy-label gy-label--inline">End Date:</label>
+                        <input type="date" id="visitorEndDate" class="gy-input gy-input--compact">
                     </div>
-                    <div>
-                        <label for="visitorWeeksBack" style="color: #aaa; margin-right: 5px;">Timeframe:</label>
-                        <select id="visitorWeeksBack" style="padding: 5px; background: #333; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                    <div class="gy-filter">
+                        <label for="visitorWeeksBack" class="gy-label gy-label--inline">Timeframe:</label>
+                        <select id="visitorWeeksBack" class="gy-select">
                             <option value="1" selected>Past 1 Week</option>
                             <option value="2">Past 2 Weeks</option>
                             <option value="4">Past 4 Weeks</option>
@@ -125,65 +126,24 @@
                             <option value="12">Past 12 Weeks</option>
                         </select>
                     </div>
-                    <div style="flex-grow: 1; text-align: right;">
-                        <span style="color: #888; font-style: italic; font-size: 0.85em;">Listing all sessions (incl. false starts)</span>
+                    <div class="gy-filters-spacer">
+                        <span class="gy-hint gy-hint--italic">Listing all sessions (incl. false starts)</span>
                     </div>
                 </div>
 
-                <div id="mediaTableContainer" style="background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
-                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
-                                <th style="padding: 12px 10px;">Subject (Title)</th>
-                                <th style="padding: 12px 10px;">Type</th>
-                                <th style="padding: 12px 10px;">Size</th>
-                                <th style="padding: 12px 10px;">Plays</th>
-                                <th style="padding: 12px 10px;">Time Played</th>
-                                <th style="padding: 12px 10px;">Reach</th>
-                                <th style="padding: 12px 10px;">Summoned (Added)</th>
-                                <th style="padding: 12px 10px;">Last Breath (Played)</th>
-                                <th style="padding: 15px 10px; text-align: center;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="leastWatchedTableBody"></tbody>
-                    </table>
-                </div>
-
-                <div id="morgueTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
-                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
-                        <thead>
-                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
-                                <th style="padding: 12px 10px;">Subject (Title)</th>
-                                <th style="padding: 12px 10px;">Type</th>
-                                <th style="padding: 12px 10px;">Size</th>
-                                <th style="padding: 12px 10px;">Plays</th>
-                                <th style="padding: 12px 10px;">Summoned (Added)</th>
-                                <th style="padding: 15px 10px; text-align: center;">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody id="morgueTableBody"></tbody>
-                    </table>
-                </div>
-
                 <!--
-                    One table for both engines. Both now return the same VisitorResponse, so
-                    there is nothing to sniff: the Fate cell fills itself when the engine
-                    reports progress and stays empty when it cannot.
+                    One table for every tab. The header and the cells both come from the same
+                    per-tab column descriptor in the script below, so a column can only be added,
+                    moved or removed in one place — and a full-width row (loading, empty, error,
+                    the truncation notice) takes its colSpan from that descriptor's length rather
+                    than from a hand-kept constant.
                 -->
-                <div id="visitorTableContainer" style="display: none; background: #1a1a1a; padding: 20px; border-radius: 8px; border: 1px solid #333; overflow-x: auto;">
-                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
+                <div id="tableContainer" class="gy-table-wrap">
+                    <table class="gy-table">
                         <thead>
-                            <tr style="border-bottom: 2px solid #444; color: #aaa; text-transform: uppercase; font-size: 0.85em;">
-                                <th style="padding: 12px 10px;">Time of Disturbance</th>
-                                <th style="padding: 12px 10px;">Visitor</th>
-                                <th style="padding: 12px 10px;">The Relic (Media)</th>
-                                <th style="padding: 12px 10px;">The Vessel (Device)</th>
-                                <th style="padding: 12px 10px;">Method</th>
-                                <th style="padding: 12px 10px;">Duration</th>
-                                <th style="padding: 12px 10px;">The Fate</th>
-                            </tr>
+                            <tr id="tableHead"></tr>
                         </thead>
-                        <tbody id="visitorTableBody"></tbody>
+                        <tbody id="tableBody"></tbody>
                     </table>
                 </div>
 
@@ -192,7 +152,311 @@
     </div>
 
     <style>
-        .exorcise-btn {
+        /* Every rule is scoped to the page id: this markup is injected into Jellyfin's own
+           dashboard, and an unscoped `.gy-table td` would still be safe but an unscoped
+           `[hidden]` would not. */
+        #GraveyardAnalyticsPage [hidden] { display: none !important; }
+
+        /* Tabs */
+        #GraveyardAnalyticsPage .gy-tabs {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            border-bottom: 2px solid #333;
+            margin-bottom: 20px;
+        }
+
+        #GraveyardAnalyticsPage .gy-tab {
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.1em;
+            padding: 10px 15px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: all 0.3s;
+        }
+
+        #GraveyardAnalyticsPage .gy-tab:hover { color: #e0e0e0; }
+        #GraveyardAnalyticsPage .gy-tab--visitors { color: #4CAF50; }
+        #GraveyardAnalyticsPage .gy-tab--settings { color: #bbb; margin-left: auto; }
+        #GraveyardAnalyticsPage .gy-tab--tracearr { color: #00bcd4; }
+
+        /* Two classes, so the active colour wins over the per-tab accent. The accents used
+           to be inline styles, which beat the active rule and left the Guestbook tab green
+           while selected. */
+        #GraveyardAnalyticsPage .gy-tab.is-active {
+            color: #cf6679;
+            font-weight: bold;
+            border-bottom: 2px solid #cf6679;
+        }
+
+        /* Shell and page heading */
+        #GraveyardAnalyticsPage .gy-shell {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+
+        #GraveyardAnalyticsPage .gy-header { margin-bottom: 30px; }
+
+        #GraveyardAnalyticsPage .gy-title {
+            margin-bottom: 5px;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', sans-serif;
+            letter-spacing: 1px;
+        }
+
+        #GraveyardAnalyticsPage .gy-subtitle { color: #888; margin: 0; font-style: italic; }
+
+        /* The headline total card */
+        #GraveyardAnalyticsPage .gy-total {
+            background: linear-gradient(135deg, #2c3e50 0%, #000000 100%);
+            border-left: 5px solid #666;
+            color: #fff;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        #GraveyardAnalyticsPage .gy-total-label {
+            display: block;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            color: #aaa;
+            letter-spacing: 2px;
+        }
+
+        #GraveyardAnalyticsPage .gy-total-value {
+            font-size: 2.5em;
+            font-weight: bold;
+            font-family: monospace;
+        }
+
+        #GraveyardAnalyticsPage .gy-total-sub { display: block; font-size: 0.85em; color: #ff9800; }
+        #GraveyardAnalyticsPage .gy-total-note { text-align: right; font-size: 0.8em; color: #888; }
+
+        /* Guestbook summary cards */
+        #GraveyardAnalyticsPage .gy-cards { display: flex; gap: 20px; margin-bottom: 25px; }
+
+        #GraveyardAnalyticsPage .gy-card {
+            flex: 1;
+            padding: 15px;
+            border-radius: 6px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        #GraveyardAnalyticsPage .gy-card--green {
+            background: linear-gradient(135deg, #1e3c20 0%, #000000 100%);
+            border-left: 5px solid #4CAF50;
+        }
+
+        #GraveyardAnalyticsPage .gy-card--red {
+            background: linear-gradient(135deg, #3c1e1e 0%, #000000 100%);
+            border-left: 5px solid #cf6679;
+        }
+
+        #GraveyardAnalyticsPage .gy-card-title {
+            margin: 0 0 10px 0;
+            color: #e0e0e0;
+            text-transform: uppercase;
+            font-size: 0.9em;
+            letter-spacing: 1px;
+        }
+
+        #GraveyardAnalyticsPage .gy-card-list {
+            margin: 0;
+            padding-left: 20px;
+            color: #aaa;
+            font-size: 0.95em;
+        }
+
+        #GraveyardAnalyticsPage .gy-card-list li { margin-bottom: 5px; }
+        #GraveyardAnalyticsPage .gy-card-text { margin: 0; color: #aaa; font-style: italic; font-size: 0.95em; }
+
+        /* Settings / Tracearr panels */
+        #GraveyardAnalyticsPage .gy-panel {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        #GraveyardAnalyticsPage .gy-panel--accent { border-color: #00bcd4; }
+        #GraveyardAnalyticsPage .gy-panel-title { color: #e0e0e0; margin-top: 0; }
+        #GraveyardAnalyticsPage .gy-panel-title--accent { color: #00bcd4; }
+        #GraveyardAnalyticsPage .gy-note { color: #888; margin-bottom: 25px; }
+        #GraveyardAnalyticsPage .gy-hint { font-size: 0.85em; color: #aaa; }
+        #GraveyardAnalyticsPage .gy-hint--italic { font-style: italic; }
+
+        #GraveyardAnalyticsPage .gy-callout {
+            background: rgba(0, 188, 212, 0.1);
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #00bcd4;
+        }
+
+        #GraveyardAnalyticsPage .gy-callout p { margin: 0; color: #ccc; }
+
+        #GraveyardAnalyticsPage .gy-toggle {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #00bcd4;
+        }
+
+        #GraveyardAnalyticsPage .gy-checkbox {
+            width: 20px;
+            height: 20px;
+            margin-right: 15px;
+            cursor: pointer;
+        }
+
+        #GraveyardAnalyticsPage .gy-toggle-label {
+            display: block;
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            margin: 0;
+        }
+
+        #GraveyardAnalyticsPage .gy-subfields {
+            padding-left: 20px;
+            border-left: 2px solid #444;
+            margin: 0 0 25px 10px;
+        }
+
+        #GraveyardAnalyticsPage .gy-field { margin-bottom: 15px; }
+        #GraveyardAnalyticsPage .gy-field--last { margin-bottom: 0; }
+        #GraveyardAnalyticsPage .gy-label { display: block; color: #aaa; margin-bottom: 5px; }
+        #GraveyardAnalyticsPage .gy-label--inline { display: inline; margin: 0 5px 0 0; cursor: inherit; }
+
+        #GraveyardAnalyticsPage .gy-input {
+            width: 100%;
+            max-width: 500px;
+            padding: 10px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+
+        #GraveyardAnalyticsPage .gy-input--search { flex-grow: 1; max-width: none; padding: 5px 10px; }
+        #GraveyardAnalyticsPage .gy-input--compact { width: auto; max-width: none; padding: 5px 10px; }
+        #GraveyardAnalyticsPage .gy-saved { color: #4CAF50; margin-left: 15px; }
+        #GraveyardAnalyticsPage .gy-failed { color: #ff9800; margin-left: 15px; }
+
+        /* Filter rows */
+        #GraveyardAnalyticsPage .gy-filters {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        #GraveyardAnalyticsPage .gy-filters-spacer { flex-grow: 1; text-align: right; }
+        #GraveyardAnalyticsPage .gy-check { display: flex; align-items: center; cursor: pointer; }
+        #GraveyardAnalyticsPage .gy-check input { margin-right: 6px; cursor: pointer; }
+
+        #GraveyardAnalyticsPage .gy-select {
+            padding: 5px;
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 4px;
+        }
+
+        #GraveyardAnalyticsPage .gy-banner {
+            background: rgba(255, 152, 0, 0.1);
+            border-left: 4px solid #ff9800;
+            padding: 12px 15px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            color: #ccc;
+            font-size: 0.9em;
+        }
+
+        /* The one table */
+        #GraveyardAnalyticsPage .gy-table-wrap {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+            overflow-x: auto;
+        }
+
+        #GraveyardAnalyticsPage .gy-table { width: 100%; text-align: left; border-collapse: collapse; }
+
+        #GraveyardAnalyticsPage .gy-table thead tr {
+            border-bottom: 2px solid #444;
+            color: #aaa;
+            text-transform: uppercase;
+            font-size: 0.85em;
+        }
+
+        #GraveyardAnalyticsPage .gy-table th { padding: 12px 10px; }
+        #GraveyardAnalyticsPage .gy-table td { padding: 15px 10px; color: #e0e0e0; }
+        #GraveyardAnalyticsPage .gy-table tbody tr { border-bottom: 1px solid #333; }
+
+        /* Cell modifiers. Anything that used to be a per-cell inline colour is a state with a
+           name here, so the row can be read without decoding hex. */
+        #GraveyardAnalyticsPage .gy-center { text-align: center; }
+        #GraveyardAnalyticsPage .gy-nowrap { white-space: nowrap; }
+        #GraveyardAnalyticsPage .gy-mono { font-family: monospace; }
+        #GraveyardAnalyticsPage .gy-muted { color: #aaa; }
+        #GraveyardAnalyticsPage .gy-dim { color: #888; }
+        #GraveyardAnalyticsPage .gy-small { font-size: 0.9em; }
+        #GraveyardAnalyticsPage .gy-strong { color: #e0e0e0; font-weight: bold; }
+        #GraveyardAnalyticsPage .gy-zero { color: #cf6679; }
+        #GraveyardAnalyticsPage .gy-solo { color: #ff9800; }
+        #GraveyardAnalyticsPage .gy-alive { color: #aaa; }
+        #GraveyardAnalyticsPage .gy-dead { color: #cf6679; font-style: italic; }
+        #GraveyardAnalyticsPage .gy-transcode { color: #cf6679; font-weight: bold; }
+        #GraveyardAnalyticsPage .gy-sub { color: #555; }
+        #GraveyardAnalyticsPage .gy-souls { font-size: 0.8em; color: #555; }
+
+        #GraveyardAnalyticsPage .gy-flag {
+            font-size: 0.75em;
+            color: #ff9800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        #GraveyardAnalyticsPage .gy-link {
+            color: #e0e0e0;
+            text-decoration: none;
+            border-bottom: 1px dashed #444;
+        }
+
+        #GraveyardAnalyticsPage .gy-link--unplayed { font-weight: bold; }
+
+        /* Full-width rows: loading, empty, error, truncation notice */
+        #GraveyardAnalyticsPage .gy-fullwidth { text-align: center; padding: 20px; color: #888; }
+        #GraveyardAnalyticsPage .gy-notice { padding: 10px; color: #ff9800; font-size: 0.9em; text-align: left; }
+        #GraveyardAnalyticsPage .gy-error { padding: 20px; color: #cf6679; text-align: center; }
+
+        /* The Fate verdicts */
+        #GraveyardAnalyticsPage .gy-fate--rest { color: #4CAF50; font-weight: bold; }
+        #GraveyardAnalyticsPage .gy-fate--near { color: #8bc34a; font-weight: bold; }
+        #GraveyardAnalyticsPage .gy-fate--lingering { color: #ffeb3b; }
+        #GraveyardAnalyticsPage .gy-fate--ghosted { color: #9E9E9E; font-style: italic; }
+        #GraveyardAnalyticsPage .gy-fate--abandoned { color: #FF9800; font-weight: bold; }
+        #GraveyardAnalyticsPage .gy-fate--unknown { color: #444; }
+        #GraveyardAnalyticsPage .gy-fate-percent { font-size: 0.75em; color: #555; }
+
+        /* Buttons. No `!important` anywhere: the variants are classes now, so the hover rule
+           no longer has to out-shout an inline style. */
+        #GraveyardAnalyticsPage .gy-btn {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid #444;
             color: #888;
@@ -205,609 +469,727 @@
             letter-spacing: 1px;
         }
 
-        .exorcise-btn:hover {
-            background: #aa2e25 !important;
-            color: white !important;
-            border-color: #f44336 !important;
+        #GraveyardAnalyticsPage .gy-btn:hover {
+            background: #aa2e25;
+            color: #fff;
+            border-color: #f44336;
             box-shadow: 0 0 10px rgba(244, 67, 54, 0.4);
             transform: translateY(-1px);
         }
 
-        .graveyard-tab {
-            background: none;
-            border: none;
-            color: #888;
-            font-size: 1.1em;
-            padding: 10px 15px;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            transition: all 0.3s;
+        #GraveyardAnalyticsPage .gy-btn--condemn { border-color: #ff9800; color: #ff9800; }
+        #GraveyardAnalyticsPage .gy-btn--pardon { border-color: #4CAF50; color: #4CAF50; margin-right: 5px; }
+        #GraveyardAnalyticsPage .gy-btn--save { border-color: #4CAF50; color: #4CAF50; padding: 10px 20px; font-weight: bold; }
+
+        /* A green action must not flash red on hover — the old sheet had one hover rule for
+           every button, so Pardon and Save both previewed as destructive. */
+        #GraveyardAnalyticsPage .gy-btn--pardon:hover,
+        #GraveyardAnalyticsPage .gy-btn--save:hover {
+            background: #2e7d32;
+            border-color: #4CAF50;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.4);
         }
 
-        .graveyard-tab:hover { color: #e0e0e0; }
-
-        .active-tab {
-            color: #cf6679;
-            font-weight: bold;
-            border-bottom: 2px solid #cf6679;
-        }
+        /* Row exit animations, previously written onto element.style by the click handlers */
+        #GraveyardAnalyticsPage .gy-row-exit { transition: all 0.5s ease; opacity: 0; }
+        #GraveyardAnalyticsPage .gy-row-exit--right { transform: translateX(50px); }
+        #GraveyardAnalyticsPage .gy-row-exit--left { transform: translateX(-50px); }
+        #GraveyardAnalyticsPage .gy-row-exit--deleted { background: rgba(170, 46, 37, 0.3); }
     </style>
 
     <script>
-        (function() {
-            var pluginId = "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21";
-            window.currentTab = 'morgue';
+        (function () {
+            'use strict';
 
-            // Set default date for Visitor Tab to Today
-            var today = new Date();
-            var dd = String(today.getDate()).padStart(2, '0');
-            var mm = String(today.getMonth() + 1).padStart(2, '0');
-            var yyyy = today.getFullYear();
-            document.getElementById('visitorEndDate').value = yyyy + '-' + mm + '-' + dd;
+            var PLUGIN_ID = '8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21';
+            var SEARCH_DEBOUNCE_MS = 500;
+            var ROW_EXIT_MS = 500;
+            var STALE_MONTHS = 12;
+            var SAVED_MESSAGE_MS = 3000;
 
-            document.getElementById('EnableTracearr').addEventListener('change', function() {
-                var fields = document.getElementById('tracearrFields');
-                if (this.checked) {
-                    fields.style.display = 'block';
-                } else {
-                    fields.style.display = 'none';
-                }
-            });
+            var page = document.getElementById('GraveyardAnalyticsPage');
+            var $ = function (id) { return page.querySelector('#' + id); };
 
-            // DOM HELPERS
-            // Rows are built as nodes and filled with textContent. Media titles,
-            // usernames and device names all originate outside the server, so no
-            // row content is ever parsed as HTML.
+            // Module-scoped, not on `window`: nothing outside this closure reads it, and a
+            // second copy of the view cannot clobber it mid-render.
+            //
+            // `request` is a fetch generation counter. One table now serves every tab, so a
+            // response that arrives after the admin has moved on would render the wrong
+            // shape of row into the wrong header; a stale generation is dropped instead.
+            var state = { tab: 'morgue', request: 0 };
+
+            var els = {
+                title: $('pageMainTitle'),
+                description: $('pageDescription'),
+                totalCard: $('mediaTopCard'),
+                totalLabel: $('totalWastedTitle'),
+                totalValue: $('totalWasteValue'),
+                totalSub: $('totalWastedSubline'),
+                summary: $('visitorSummary'),
+                leaderboard: $('leaderboardList'),
+                ghosts: $('ghostsList'),
+                settings: $('settingsContainer'),
+                tracearr: $('tracearrContainer'),
+                tracearrFields: $('tracearrFields'),
+                tracearrTab: $('tabTracearr'),
+                mediaFilters: $('mediaFilters'),
+                barelyFilter: $('barelyTouchedFilter'),
+                unverifiableFilter: $('unverifiableFilter'),
+                banner: $('coverageBanner'),
+                visitorFilters: $('visitorFilters'),
+                tableWrap: $('tableContainer'),
+                head: $('tableHead'),
+                body: $('tableBody'),
+                saved: $('saveConfirmation'),
+                saveFailed: $('saveFailure')
+            };
+
+            // ---- DOM helpers -------------------------------------------------------------
+            // Rows are built as nodes and filled with textContent. Media titles, usernames and
+            // device names all originate outside the server, so no row content is ever parsed
+            // as HTML.
+
             function clear(node) {
                 while (node.firstChild) node.removeChild(node.firstChild);
             }
 
-            function td(style, text) {
-                var cell = document.createElement('td');
-                if (style) cell.style.cssText = style;
-                if (text !== undefined && text !== null) cell.textContent = text;
-                return cell;
-            }
-
-            function span(style, text) {
-                var el = document.createElement('span');
-                if (style) el.style.cssText = style;
-                el.textContent = text;
+            function tag(name, className, text) {
+                var el = document.createElement(name);
+                if (className) el.className = className;
+                // Tested against null/undefined rather than truthiness, so a numeric 0 still
+                // renders as "0" instead of an empty cell.
+                if (text !== undefined && text !== null) el.textContent = text;
                 return el;
             }
 
-            function subLine(text) {
-                var el = document.createElement('small');
-                el.style.color = '#555';
-                el.textContent = text;
-                return el;
+            function cell(className, text) { return tag('td', className, text); }
+            function span(className, text) { return tag('span', className, text); }
+            function sub(text) { return tag('small', 'gy-sub', text); }
+
+            function breakThen(parent, node) {
+                parent.appendChild(document.createElement('br'));
+                parent.appendChild(node);
             }
 
-            function emptyRow(tbody, colspan, message) {
+            function fullWidthRow(columns, className, text) {
                 var tr = document.createElement('tr');
-                var cell = td('text-align:center; padding:20px; color:#888;', message);
-                cell.colSpan = colspan;
-                tr.appendChild(cell);
-                tbody.appendChild(tr);
+                var only = cell(className, text);
+                only.colSpan = columns.length;
+                tr.appendChild(only);
+                return tr;
             }
 
-            function actionButton(label, style, item, handler) {
-                var btn = document.createElement('button');
-                btn.type = 'button';
-                btn.className = 'exorcise-btn';
-                if (style) btn.style.cssText = style;
-                btn.textContent = label;
-                btn.dataset.id = item.MediaId;
-                btn.dataset.name = item.Name || '';
-                btn.addEventListener('click', function() {
-                    handler(btn.dataset.id, btn.dataset.name, btn);
-                });
-                return btn;
+            function formatDay(value, fallback) {
+                if (!value) return fallback;
+                var parsed = new Date(value);
+                if (isNaN(parsed.getTime())) return fallback;
+                return parsed.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
             }
 
-            // LOAD PLUGIN CONFIGURATION
-            window.loadPluginConfig = function() {
-                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
-                    if (config.TracearrUrl) document.getElementById('TracearrUrl').value = config.TracearrUrl;
-                    if (config.TracearrApiKey) document.getElementById('TracearrApiKey').value = config.TracearrApiKey;
+            function detailsUrl(mediaId) {
+                var base = window.parent.location.origin + window.parent.location.pathname;
+                return base + '#/details?id=' + encodeURIComponent(mediaId);
+            }
 
-                    if (config.EnableTracearr) {
-                        document.getElementById('EnableTracearr').checked = true;
-                        document.getElementById('tracearrFields').style.display = 'block';
-                        document.getElementById('tabTracearr').style.display = 'inline-block';
-                    } else {
-                        document.getElementById('EnableTracearr').checked = false;
-                        document.getElementById('tracearrFields').style.display = 'none';
-                        document.getElementById('tabTracearr').style.display = 'none';
-                    }
-                });
-            };
+            // ---- Column descriptors ------------------------------------------------------
+            // One entry per column: the header label, and the function that builds the cell.
+            // The header, the cells and every full-width row's colSpan all read from these, so
+            // adding a column is one edit rather than three.
 
-            // SAVE PLUGIN CONFIGURATION
-            window.savePluginConfig = function() {
-                var isEnabled = document.getElementById('EnableTracearr').checked;
-                var url = document.getElementById('TracearrUrl').value;
-                var key = document.getElementById('TracearrApiKey').value;
+            function titleCell(item, context) {
+                var host = cell(null);
+                var link = tag('a', 'gy-link' + (item.PlayCount === 0 ? ' gy-link--unplayed' : ''), item.Name);
+                link.href = detailsUrl(item.MediaId);
+                link.target = '_top';
+                host.appendChild(link);
 
-                ApiClient.getPluginConfiguration(pluginId).then(function (config) {
-                    config.EnableTracearr = isEnabled;
-                    config.TracearrUrl = url;
-                    config.TracearrApiKey = key;
+                // A row older than playback history cannot be confirmed unwatched, so say so on
+                // the row and not only in the banner above it.
+                if (state.tab === 'morgue' && context && context.HistoryFloorUtc && item.DateAdded
+                    && new Date(item.DateAdded) < new Date(context.HistoryFloorUtc)) {
+                    breakThen(host, span('gy-flag', 'unverified — predates history'));
+                }
+                return host;
+            }
 
-                    ApiClient.updatePluginConfiguration(pluginId, config).then(function () {
-                        var confMsg = document.getElementById('saveConfirmation');
-                        confMsg.style.display = 'inline';
-                        setTimeout(function() { confMsg.style.display = 'none'; }, 3000);
+            function reachCell(item) {
+                var host = cell(item.UniqueViewers === 1 ? 'gy-solo' : 'gy-muted', item.UniqueViewers + ' ');
+                host.appendChild(span('gy-souls', 'Souls'));
+                return host;
+            }
 
-                        if (isEnabled) {
-                            document.getElementById('tabTracearr').style.display = 'inline-block';
-                        } else {
-                            document.getElementById('tabTracearr').style.display = 'none';
-                            if (window.currentTab === 'tracearr') {
-                                window.switchTab('settings');
-                            }
-                        }
-                    });
-                });
-            };
+            // The Last Breath cell is a verdict as well as a date: anything past the staleness
+            // cut is styled dead. The class carries that verdict so it can be read (and asserted)
+            // without decoding a hex colour.
+            function lastBreathCell(item) {
+                var cut = new Date();
+                cut.setMonth(cut.getMonth() - STALE_MONTHS);
+                var played = item.LastPlayed ? new Date(item.LastPlayed) : null;
+                var dead = !played || played < cut;
+                return cell(dead ? 'gy-dead' : 'gy-alive', played ? formatDay(item.LastPlayed, 'Never') : 'Never');
+            }
 
-            // TAB SWITCHING LOGIC
-            window.switchTab = function(tabName) {
-                window.currentTab = tabName;
-
-                document.querySelectorAll('.graveyard-tab').forEach(t => t.classList.remove('active-tab'));
-
-                var mediaTopCard = document.getElementById('mediaTopCard');
-                var mediaFilters = document.getElementById('mediaFilters');
-
-                var mediaTableContainer = document.getElementById('mediaTableContainer');
-                var morgueTableContainer = document.getElementById('morgueTableContainer');
-                var visitorTableContainer = document.getElementById('visitorTableContainer');
-
-                var visitorSummary = document.getElementById('visitorSummary');
-                var visitorFilters = document.getElementById('visitorFilters');
-
-                var settingsContainer = document.getElementById('settingsContainer');
-                var tracearrContainer = document.getElementById('tracearrContainer');
-
-                var pageTitle = document.getElementById('pageMainTitle');
-                var pageDesc = document.getElementById('pageDescription');
-
-                mediaTopCard.style.display = 'none';
-                mediaFilters.style.display = 'none';
-                document.getElementById('barelyTouchedFilter').style.display = 'none';
-                document.getElementById('unverifiableFilter').style.display = 'none';
-                document.getElementById('coverageBanner').style.display = 'none';
-
-                // Cleared on the way out, not just rewritten on the way in: it makes a claim
-                // about a specific tab's rows, and a fetch that fails leaves the card up.
-                document.getElementById('totalWastedSubline').style.display = 'none';
-                document.getElementById('totalWastedSubline').innerText = '';
-                mediaTableContainer.style.display = 'none';
-                morgueTableContainer.style.display = 'none';
-                visitorTableContainer.style.display = 'none';
-                visitorSummary.style.display = 'none';
-                visitorFilters.style.display = 'none';
-                settingsContainer.style.display = 'none';
-                tracearrContainer.style.display = 'none';
-
-                if (tabName === 'visitors') {
-                    document.getElementById('tabVisitors').classList.add('active-tab');
-
-                    visitorFilters.style.display = 'flex';
-                    pageTitle.innerText = "THE GUESTBOOK";
-                    pageDesc.innerText = "Monitor server traffic, review playback sessions, and track the lingering ghosts.";
-
-                    window.fetchAndRenderTable();
-
-                } else if (tabName === 'settings') {
-                    document.getElementById('tabSettings').classList.add('active-tab');
-                    settingsContainer.style.display = 'block';
-
-                    pageTitle.innerText = "PLUGIN CONFIGURATION";
-                    pageDesc.innerText = "Configure backend data providers and API integrations.";
-
-                } else if (tabName === 'tracearr') {
-                    document.getElementById('tabTracearr').classList.add('active-tab');
-                    tracearrContainer.style.display = 'block';
-
-                    pageTitle.innerText = "TRACEARR COMMAND CENTER";
-                    pageDesc.innerText = "Manage active webhooks and automated library cleanup rules.";
-
+            function actionsCell(item) {
+                var host = cell('gy-center gy-nowrap');
+                if (state.tab === 'living' || state.tab === 'morgue') {
+                    host.appendChild(actionButton('Condemn', 'gy-btn--condemn', item, condemnSubject));
                 } else {
-                    mediaTopCard.style.display = 'flex';
-                    mediaFilters.style.display = 'flex';
-
-                    if (tabName === 'living') {
-                        document.getElementById('tabLiving').classList.add('active-tab');
-                        mediaTableContainer.style.display = 'block';
-                    } else if (tabName === 'morgue') {
-                        document.getElementById('tabMorgue').classList.add('active-tab');
-                        morgueTableContainer.style.display = 'block';
-                        document.getElementById('barelyTouchedFilter').style.display = 'flex';
-                        document.getElementById('unverifiableFilter').style.display = 'flex';
-                    } else if (tabName === 'chapel') {
-                        document.getElementById('tabChapel').classList.add('active-tab');
-                        mediaTableContainer.style.display = 'block';
-                    }
-
-                    pageTitle.innerText = "THE GRAVEYARD";
-                    pageDesc.innerText = "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites.";
-                    window.fetchAndRenderTable();
+                    host.appendChild(actionButton('Pardon', 'gy-btn--pardon', item, pardonSubject));
+                    host.appendChild(actionButton('Exorcise', null, item, performLastRites));
                 }
+                return host;
+            }
+
+            var MEDIA = {
+                title: { label: 'Subject (Title)', cell: titleCell },
+                type: { label: 'Type', cell: function (i) { return cell('gy-muted', i.Type); } },
+                size: { label: 'Size', cell: function (i) { return cell('gy-muted gy-mono', i.FormattedSize); } },
+                // Plays is shown in the Morgue too: with "barely-touched" enabled a row can have
+                // plays, and without the column those are indistinguishable from zero-play ones.
+                plays: { label: 'Plays', cell: function (i) { return cell(i.PlayCount === 0 ? 'gy-zero' : 'gy-dim', i.PlayCount); } },
+                timePlayed: { label: 'Time Played', cell: function (i) { return cell('gy-dim gy-mono', i.FormattedDuration || '00:00:00'); } },
+                reach: { label: 'Reach', cell: reachCell },
+                added: { label: 'Summoned (Added)', cell: function (i) { return cell('gy-muted', formatDay(i.DateAdded, 'Unknown')); } },
+                lastBreath: { label: 'Last Breath (Played)', cell: lastBreathCell },
+                actions: { label: 'Actions', center: true, cell: actionsCell }
             };
 
-            // ACTIONS
-            window.condemnSubject = function(id, name, btnElement) {
-                if (confirm('Move "' + name + '" to The Chapel?')) {
-                    var row = btnElement.closest('tr');
-                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('GraveyardAnalytics/Condemn/' + id) }).then(function() {
-                        row.style.transition = 'all 0.5s ease'; row.style.opacity = '0'; row.style.transform = 'translateX(50px)';
-                        setTimeout(window.fetchAndRenderTable, 500);
+            var MEDIA_COLUMNS = [
+                MEDIA.title, MEDIA.type, MEDIA.size, MEDIA.plays, MEDIA.timePlayed,
+                MEDIA.reach, MEDIA.added, MEDIA.lastBreath, MEDIA.actions
+            ];
+
+            // The Morgue is zero-play by construction, so Time Played, Reach and Last Breath
+            // have nothing to report there.
+            var MORGUE_COLUMNS = [
+                MEDIA.title, MEDIA.type, MEDIA.size, MEDIA.plays, MEDIA.added, MEDIA.actions
+            ];
+
+            function relicCell(session) {
+                var host = cell(null, session.Subject || 'Unknown Relic');
+                breakThen(host, sub(session.Type || ''));
+                return host;
+            }
+
+            function vesselCell(session) {
+                var host = cell('gy-muted', session.Device || 'Unknown Vessel');
+                if (session.Player) breakThen(host, sub(session.Player));
+                return host;
+            }
+
+            // Fate uses whatever the engine could report: an explicit Watched verdict outranks a
+            // percentage, and an engine that reports neither gets a dash rather than a guess.
+            // Playback Reporting records elapsed time but not item runtime, so the local engine
+            // always lands in that last case.
+            function fateCell(session) {
+                var host = cell(null);
+
+                if (session.Watched === true) {
+                    host.appendChild(span('gy-fate--rest', 'Laid to Rest'));
+                    return host;
+                }
+
+                if (session.ProgressPercent === null || session.ProgressPercent === undefined) {
+                    host.appendChild(span('gy-fate--unknown', '—'));
+                    return host;
+                }
+
+                var percent = session.ProgressPercent;
+                if (percent >= 85) host.appendChild(span('gy-fate--near', 'Near Death'));
+                else if (percent >= 50) host.appendChild(span('gy-fate--lingering', 'Lingering'));
+                else if (percent >= 20) host.appendChild(span('gy-fate--ghosted', 'Ghosted'));
+                else host.appendChild(span('gy-fate--abandoned', 'Left for Dead'));
+
+                breakThen(host, span('gy-fate-percent', Math.round(percent) + '% Complete'));
+                return host;
+            }
+
+            var VISITOR_COLUMNS = [
+                { label: 'Time of Disturbance', cell: function (s) { return cell('gy-muted gy-small', s.Time || 'Unknown'); } },
+                { label: 'Visitor', cell: function (s) { return cell('gy-strong', s.Visitor || 'Unknown'); } },
+                { label: 'The Relic (Media)', cell: relicCell },
+                { label: 'The Vessel (Device)', cell: vesselCell },
+                { label: 'Method', cell: function (s) { return cell(s.IsTranscode ? 'gy-transcode' : 'gy-dim', s.Method || 'Unknown'); } },
+                { label: 'Duration', cell: function (s) { return cell('gy-muted gy-mono', s.Duration || '00:00:00'); } },
+                { label: 'The Fate', cell: fateCell }
+            ];
+
+            var COLUMNS = {
+                living: MEDIA_COLUMNS,
+                chapel: MEDIA_COLUMNS,
+                morgue: MORGUE_COLUMNS,
+                visitors: VISITOR_COLUMNS
+            };
+
+            function columnsFor(tab) { return COLUMNS[tab] || MEDIA_COLUMNS; }
+
+            // ---- Table rendering ---------------------------------------------------------
+
+            function renderHead(columns) {
+                clear(els.head);
+                columns.forEach(function (column) {
+                    var th = tag('th', column.center ? 'gy-center' : null, column.label);
+                    th.scope = 'col';
+                    els.head.appendChild(th);
+                });
+            }
+
+            function renderRows(columns, rows, context, emptyMessage) {
+                clear(els.body);
+
+                if (!rows || rows.length === 0) {
+                    els.body.appendChild(fullWidthRow(columns, 'gy-fullwidth', emptyMessage));
+                    return;
+                }
+
+                rows.forEach(function (row) {
+                    var tr = document.createElement('tr');
+                    columns.forEach(function (column) { tr.appendChild(column.cell(row, context)); });
+                    els.body.appendChild(tr);
+                });
+            }
+
+            // Loading and error are states of the same table, so they are rows in it rather than
+            // a spinner somewhere else — a fetch that never returns used to leave the previous
+            // tab's rows on screen looking current.
+            function renderLoading() {
+                var columns = columnsFor(state.tab);
+                renderHead(columns);
+                clear(els.body);
+                els.body.appendChild(fullWidthRow(columns, 'gy-fullwidth', 'Consulting the records…'));
+            }
+
+            function renderError(message) {
+                var columns = columnsFor(state.tab);
+                renderHead(columns);
+                clear(els.body);
+                els.body.appendChild(fullWidthRow(columns, 'gy-error', message));
+
+                // Both of these make a claim about rows that are no longer on screen.
+                clearTotals('—');
+                clearSummary();
+                els.banner.hidden = true;
+            }
+
+            function renderMediaTable(items, context) {
+                var columns = columnsFor(state.tab === 'visitors' ? 'living' : state.tab);
+                renderHead(columns);
+                renderRows(columns, items, context, 'Nothing matches these filters.');
+            }
+
+            function renderVisitorTable(response) {
+                var data = response || {};
+                renderHead(VISITOR_COLUMNS);
+                renderSummary(data);
+
+                var sessions = data.Sessions || [];
+                renderRows(VISITOR_COLUMNS, sessions, data, 'No sessions recorded for this period.');
+
+                if (sessions.length > 0 && data.Truncated) {
+                    els.body.insertBefore(
+                        fullWidthRow(VISITOR_COLUMNS, 'gy-notice',
+                            'Showing the most recent ' + data.RowLimit + ' sessions — the timeframe holds more, '
+                            + 'so the leaderboard and ghosts above cover only these rows.'),
+                        els.body.firstChild);
+                }
+            }
+
+            function renderSummary(data) {
+                clear(els.leaderboard);
+                var leaders = data.Leaderboard || [];
+
+                if (leaders.length === 0) {
+                    els.leaderboard.appendChild(tag('li', null, 'No active visitors in this timeframe.'));
+                } else {
+                    leaders.forEach(function (leader) {
+                        var li = tag('li', null);
+                        li.appendChild(tag('strong', null, leader.Name));
+                        li.appendChild(document.createTextNode(' - ' + leader.TotalTime));
+                        els.leaderboard.appendChild(li);
                     });
                 }
-            };
-            window.pardonSubject = function(id, name, btnElement) {
-                if (confirm('Pardon "' + name + '"?')) {
-                    var row = btnElement.closest('tr');
-                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('GraveyardAnalytics/Pardon/' + id) }).then(function() {
-                        row.style.transition = 'all 0.5s ease'; row.style.opacity = '0'; row.style.transform = 'translateX(-50px)';
-                        setTimeout(window.fetchAndRenderTable, 500);
-                    });
+
+                els.ghosts.textContent = (data.Ghosts && data.Ghosts.length > 0)
+                    ? data.Ghosts.join(', ')
+                    : 'None! Everyone is actively watching.';
+            }
+
+            function clearSummary() {
+                clear(els.leaderboard);
+                els.ghosts.textContent = '';
+            }
+
+            // Says what the history can and cannot support. Only the Morgue reports coverage, so
+            // the banner stays hidden everywhere else.
+            function renderCoverageBanner(data) {
+                clear(els.banner);
+
+                if (state.tab !== 'morgue' || data.CoverageDays === null || data.CoverageDays === undefined) {
+                    els.banner.hidden = true;
+                    return;
                 }
-            };
-            window.performLastRites = function(id, name, btnElement) {
-                if (confirm('Permanently delete "' + name + '" from your storage?')) {
-                    var row = btnElement.closest('tr');
-                    ApiClient.ajax({ type: "POST", url: ApiClient.getUrl('GraveyardAnalytics/LastRites/' + id) }).then(function() {
-                        row.style.background = 'rgba(170, 46, 37, 0.3)'; row.style.opacity = '0';
-                        setTimeout(window.fetchAndRenderTable, 500);
-                    });
+
+                var lines = [];
+                var withheld = data.UnverifiableCandidateCount || 0;
+
+                if (data.CoverageDays === 0) {
+                    lines.push('No playback history is available yet, so nothing can be confirmed as unwatched.');
+                } else {
+                    lines.push('History covers ' + data.CoverageDays + ' days. Showing items with no plays that have been in the library at least ' + data.GraceDays + ' days.');
                 }
-            };
 
-            var view = document.getElementById('GraveyardAnalyticsPage');
-
-            view.addEventListener('viewshow', function () {
-
-                // Both engines return the same VisitorResponse, so there is one renderer and
-                // no payload sniffing. Anything only one engine can report (the Fate cell)
-                // is optional per row, not a separate table.
-                var VISITOR_COLUMNS = 7;
-
-                window.renderVisitorTable = function(response) {
-                    document.getElementById('visitorTableContainer').style.display = 'block';
-                    document.getElementById('visitorSummary').style.display = 'flex';
-
-                    renderSummary(response);
-                    renderSessions(response);
-
-                    function renderSummary(data) {
-                        var leaderboardList = document.getElementById('leaderboardList');
-                        clear(leaderboardList);
-                        var leaders = data.Leaderboard || [];
-                        if (leaders.length === 0) {
-                            var noneItem = document.createElement('li');
-                            noneItem.textContent = 'No active visitors in this timeframe.';
-                            leaderboardList.appendChild(noneItem);
-                        } else {
-                            leaders.forEach(function(l) {
-                                var li = document.createElement('li');
-                                li.style.marginBottom = '5px';
-                                var name = document.createElement('strong');
-                                name.textContent = l.Name;
-                                li.appendChild(name);
-                                li.appendChild(document.createTextNode(' - ' + l.TotalTime));
-                                leaderboardList.appendChild(li);
-                            });
-                        }
-
-                        document.getElementById('ghostsList').textContent = (data.Ghosts && data.Ghosts.length > 0) ? data.Ghosts.join(', ') : 'None! Everyone is actively watching.';
-                    }
-
-                    function renderSessions(data) {
-                        var tbody = document.getElementById('visitorTableBody');
-                        clear(tbody);
-
-                        var sessions = data.Sessions || [];
-                        if (sessions.length === 0) {
-                            emptyRow(tbody, VISITOR_COLUMNS, 'No sessions recorded for this period.');
-                            return;
-                        }
-
-                        if (data.Truncated) {
-                            var notice = document.createElement('tr');
-                            var noticeCell = td('padding:10px; color:#ff9800; font-size:0.9em;',
-                                'Showing the most recent ' + data.RowLimit + ' sessions — the timeframe holds more, so the leaderboard and ghosts above cover only these rows.');
-                            noticeCell.colSpan = VISITOR_COLUMNS;
-                            notice.appendChild(noticeCell);
-                            tbody.appendChild(notice);
-                        }
-
-                        sessions.forEach(function(s) {
-                            var tr = document.createElement('tr');
-                            tr.style.borderBottom = '1px solid #222';
-                            var methodColor = s.IsTranscode ? '#cf6679' : '#888';
-                            var methodWeight = s.IsTranscode ? 'bold' : 'normal';
-
-                            tr.appendChild(td('padding:12px 10px; color:#aaa; font-size:0.9em;', s.Time || 'Unknown'));
-                            tr.appendChild(td('padding:12px 10px; color:#e0e0e0; font-weight:bold;', s.Visitor || 'Unknown'));
-
-                            var subjectCell = td('padding:12px 10px; color:#fff;', s.Subject || 'Unknown Relic');
-                            subjectCell.appendChild(document.createElement('br'));
-                            subjectCell.appendChild(subLine(s.Type || ''));
-                            tr.appendChild(subjectCell);
-
-                            var deviceCell = td('padding:12px 10px; color:#aaa;', s.Device || 'Unknown Vessel');
-                            if (s.Player) {
-                                deviceCell.appendChild(document.createElement('br'));
-                                deviceCell.appendChild(subLine(s.Player));
-                            }
-                            tr.appendChild(deviceCell);
-
-                            tr.appendChild(td('padding:12px 10px; color:' + methodColor + '; font-weight:' + methodWeight + ';', s.Method || 'Unknown'));
-                            tr.appendChild(td('padding:12px 10px; font-family:monospace; color:#aaa;', s.Duration || '00:00:00'));
-                            tr.appendChild(fateCell(s));
-
-                            tbody.appendChild(tr);
-                        });
-                    }
-
-                    // Fate uses whatever the engine could report: an explicit Watched verdict
-                    // outranks a percentage, and an engine that reports neither gets a dash
-                    // rather than a guess. Playback Reporting records elapsed time but not
-                    // item runtime, so the local engine always lands in that last case.
-                    function fateCell(s) {
-                        var cell = td('padding:12px 10px;');
-
-                        if (s.Watched === true) {
-                            cell.appendChild(span('color: #4CAF50; font-weight: bold;', 'Laid to Rest'));
-                            return cell;
-                        }
-
-                        if (s.ProgressPercent === null || s.ProgressPercent === undefined) {
-                            cell.appendChild(span('color: #444;', '—'));
-                            return cell;
-                        }
-
-                        var percentage = s.ProgressPercent;
-                        if (percentage >= 85) {
-                            cell.appendChild(span('color: #8bc34a; font-weight: bold;', 'Near Death'));
-                        } else if (percentage >= 50) {
-                            cell.appendChild(span('color: #ffeb3b;', 'Lingering'));
-                        } else if (percentage >= 20) {
-                            cell.appendChild(span('color: #9E9E9E; font-style: italic;', 'Ghosted'));
-                        } else {
-                            cell.appendChild(span('color: #FF9800; font-weight: bold;', 'Left for Dead'));
-                        }
-
-                        cell.appendChild(document.createElement('br'));
-                        cell.appendChild(span('font-size:0.75em; color:#555;', Math.round(percentage) + '% Complete'));
-                        return cell;
-                    }
-                };
-
-                // Says what the history can and cannot support. Only the Morgue reports
-                // coverage, so the banner stays hidden everywhere else.
-                window.renderCoverageBanner = function(data) {
-                    var banner = document.getElementById('coverageBanner');
-                    clear(banner);
-
-                    if (window.currentTab !== 'morgue' || data.CoverageDays === null || data.CoverageDays === undefined) {
-                        banner.style.display = 'none';
-                        return;
-                    }
-
-                    var lines = [];
-                    var withheld = data.UnverifiableCandidateCount || 0;
-
-                    if (data.CoverageDays === 0) {
-                        lines.push('No playback history is available yet, so nothing can be confirmed as unwatched.');
+                if (withheld > 0) {
+                    if (data.IncludingUnverifiable) {
+                        lines.push(withheld + ' shown row(s) predate that history and are marked "unverified" — they read as unwatched whether or not they were watched.');
                     } else {
-                        lines.push('History covers ' + data.CoverageDays + ' days. Showing items with no plays that have been in the library at least ' + data.GraceDays + ' days.');
+                        lines.push(withheld + ' further item(s) were added before history begins and are withheld, because they cannot be told apart from watched ones. Tick "Include unverifiable" to review them.');
                     }
+                }
 
-                    if (withheld > 0) {
-                        if (data.IncludingUnverifiable) {
-                            lines.push(withheld + ' shown row(s) predate that history and are marked "unverified" — they read as unwatched whether or not they were watched.');
-                        } else {
-                            lines.push(withheld + ' further item(s) were added before history begins and are withheld, because they cannot be told apart from watched ones. Tick "Include unverifiable" to review them.');
-                        }
-                    }
+                lines.forEach(function (text, index) {
+                    if (index > 0) els.banner.appendChild(document.createElement('br'));
+                    els.banner.appendChild(document.createTextNode(text));
+                });
+                els.banner.hidden = false;
+            }
 
-                    lines.forEach(function(text, index) {
-                        if (index > 0) banner.appendChild(document.createElement('br'));
-                        banner.appendChild(document.createTextNode(text));
-                    });
-                    banner.style.display = 'block';
-                };
+            // The top card. The response carries two figures rather than one overloaded field:
+            // TotalSize is the size of what this tab lists, TotalWasted only the never-played
+            // part of it — and null on the Sanctuary, where every row has plays.
+            var TOTAL_LABELS = {
+                living: 'Total Size of Living Media',
+                chapel: 'Total Size in The Chapel',
+                morgue: 'Total Dead Weight'
+            };
 
-                // The top card. The response carries two figures rather than one overloaded
-                // field: TotalSize is the size of what this tab lists, TotalWasted only the
-                // never-played part of it — and null on the Sanctuary, where every row has
-                // plays. The label used to be swapped per tab to cover for a field called
-                // "total wasted" reporting living media.
-                var TOTAL_LABELS = {
-                    living: 'Total Size of Living Media',
-                    chapel: 'Total Size in The Chapel',
-                    morgue: 'Total Dead Weight'
-                };
+            function renderTotals(data) {
+                var label = TOTAL_LABELS[state.tab] || 'Total Size';
 
-                window.renderTotals = function(data) {
-                    var subline = document.getElementById('totalWastedSubline');
-                    var label = TOTAL_LABELS[window.currentTab] || 'Total Size';
+                // The Morgue's total covers the rows listed, the other two cover the whole tab.
+                // Same card, same position, two meanings — so it has to say which.
+                if (data.TotalCoversAllMatches === false) label += ' (listed rows)';
 
-                    // The Morgue's total covers the rows listed, the other two cover the whole
-                    // tab. Same card, same position, two meanings — so it has to say which.
-                    if (data.TotalCoversAllMatches === false) {
-                        label += ' (listed rows)';
-                    }
+                els.totalLabel.textContent = label;
+                els.totalValue.textContent = data.TotalSize || '0 B';
 
-                    document.getElementById('totalWastedTitle').innerText = label;
-                    document.getElementById('totalWasteValue').innerText = data.TotalSize || '0 B';
+                // Equal figures would just say the same thing twice: the Morgue's default state
+                // is zero-play by construction. A null TotalWasted means the view has nothing it
+                // can claim, which is not the same as claiming zero.
+                if (data.TotalWasted && data.TotalWasted !== data.TotalSize) {
+                    els.totalSub.textContent = 'Never played: ' + data.TotalWasted;
+                    els.totalSub.hidden = false;
+                } else {
+                    els.totalSub.textContent = '';
+                    els.totalSub.hidden = true;
+                }
+            }
 
-                    // Equal figures would just say the same thing twice: the Morgue's default
-                    // state is zero-play by construction. A null TotalWasted means the view has
-                    // nothing it can claim, which is not the same as claiming zero.
-                    if (data.TotalWasted && data.TotalWasted !== data.TotalSize) {
-                        subline.innerText = 'Never played: ' + data.TotalWasted;
-                        subline.style.display = 'block';
-                    } else {
-                        subline.innerText = '';
-                        subline.style.display = 'none';
-                    }
-                };
+            // Cleared on the way out, not just rewritten on the way in: the sub-line makes a
+            // claim about one specific tab's rows, and a fetch that fails leaves the card up.
+            function clearTotals(value) {
+                els.totalValue.textContent = value || '0 B';
+                els.totalSub.textContent = '';
+                els.totalSub.hidden = true;
+            }
 
-                window.renderMediaTable = function(items, context) {
-                    var isMorgue = window.currentTab === 'morgue';
-                    var tbody = isMorgue ? document.getElementById('morgueTableBody') : document.getElementById('leastWatchedTableBody');
+            // ---- Failure text ------------------------------------------------------------
+            // Since Phase 1 every failing endpoint answers with a { message } object whose text is
+            // written for this UI and carries no filesystem path, so it is worth showing when it
+            // can be read. ApiClient rejects with whatever the transport gave it, which is not
+            // guaranteed to be a Response — hence the fallbacks.
 
-                    clear(tbody);
+            function failureText(error) {
+                if (error && typeof error.status === 'number' && error.status) {
+                    return 'The request failed (HTTP ' + error.status + '). Check the Jellyfin server log for details.';
+                }
+                return 'The request failed. Check the Jellyfin server log for details.';
+            }
 
-                    items.forEach(function(item) {
-                        var tr = document.createElement('tr');
-                        tr.style.borderBottom = '1px solid #333';
+            function describeFailure(error) {
+                if (error && typeof error.json === 'function') {
+                    return Promise.resolve(error.json()).then(
+                        function (body) { return (body && body.message) ? body.message : failureText(error); },
+                        function () { return failureText(error); });
+                }
+                if (error && error.responseJSON && error.responseJSON.message) {
+                    return Promise.resolve(error.responseJSON.message);
+                }
+                return Promise.resolve(failureText(error));
+            }
 
-                        var playCountColor = item.PlayCount === 0 ? '#cf6679' : '#888';
-                        var nameWeight = item.PlayCount === 0 ? 'bold' : 'normal';
-                        var baseUrl = window.parent.location.origin + window.parent.location.pathname;
-                        var itemUrl = baseUrl + '#/details?id=' + encodeURIComponent(item.MediaId);
+            // ---- Row actions -------------------------------------------------------------
 
-                        // Date Added Math
-                        var dateAddedText = "Unknown";
-                        if (item.DateAdded) {
-                            dateAddedText = new Date(item.DateAdded).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-                        }
+            function actionButton(label, variant, item, handler) {
+                var button = tag('button', 'gy-btn' + (variant ? ' ' + variant : ''), label);
+                button.type = 'button';
+                button.dataset.id = item.MediaId;
+                button.dataset.name = item.Name || '';
+                button.addEventListener('click', function () {
+                    handler(button.dataset.id, button.dataset.name, button);
+                });
+                return button;
+            }
 
-                        // Last Played Math (Only needed for Full Table)
-                        var lastPlayedText = "Never";
-                        var timeOfDeathColor = '#aaa';
-                        var isDead = false;
-                        if (!isMorgue) {
-                            var twelveMonthsAgo = new Date(); twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
-                            if (item.LastPlayed) {
-                                var lpDate = new Date(item.LastPlayed);
-                                lastPlayedText = lpDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-                                if (lpDate < twelveMonthsAgo) isDead = true;
-                            } else { isDead = true; }
-                            timeOfDeathColor = isDead ? '#cf6679' : '#aaa';
-                        }
-
-                        // Title cell — the link text is a filename, so it stays textContent
-                        var nameCell = td('padding: 15px 10px;');
-                        var link = document.createElement('a');
-                        link.href = itemUrl;
-                        link.target = '_top';
-                        link.style.cssText = 'color: #e0e0e0; text-decoration: none; border-bottom: 1px dashed #444;';
-                        link.style.fontWeight = nameWeight;
-                        link.textContent = item.Name;
-                        nameCell.appendChild(link);
-                        tr.appendChild(nameCell);
-
-                        tr.appendChild(td('padding: 15px 10px; color: #aaa;', item.Type));
-                        tr.appendChild(td('padding: 15px 10px; font-family: monospace; color: #aaa;', item.FormattedSize));
-
-                        // Plays is shown in the Morgue too: with "barely-touched" enabled a
-                        // row can have plays, and without the column those are
-                        // indistinguishable from the zero-play ones.
-                        if (isMorgue) {
-                            tr.appendChild(td('padding: 15px 10px; color: ' + playCountColor + ';', item.PlayCount));
-                        }
-
-                        // A row older than playback history cannot be confirmed unwatched, so
-                        // say so on the row and not only in the banner.
-                        if (isMorgue && context && context.HistoryFloorUtc && item.DateAdded
-                            && new Date(item.DateAdded) < new Date(context.HistoryFloorUtc)) {
-                            nameCell.appendChild(document.createElement('br'));
-                            nameCell.appendChild(span('font-size:0.75em; color:#ff9800; text-transform:uppercase; letter-spacing:1px;', 'unverified — predates history'));
-                        }
-
-                        // The extra stats for Living/Chapel
-                        if (!isMorgue) {
-                            tr.appendChild(td('padding: 15px 10px; color: ' + playCountColor + ';', item.PlayCount));
-                            tr.appendChild(td('padding: 15px 10px; color: #888; font-family: monospace;', item.FormattedDuration || '00:00:00'));
-
-                            var reachCell = td('padding: 15px 10px; color: ' + (item.UniqueViewers === 1 ? '#ff9800' : '#aaa') + ';', item.UniqueViewers + ' ');
-                            reachCell.appendChild(span('font-size:0.8em; color:#555;', 'Souls'));
-                            tr.appendChild(reachCell);
-                        }
-
-                        // The standard trailing columns
-                        tr.appendChild(td('padding: 15px 10px; color: #aaa;', dateAddedText));
-
-                        if (!isMorgue) {
-                            tr.appendChild(td('padding: 15px 10px; color: ' + timeOfDeathColor + '; font-style: ' + (isDead ? 'italic' : 'normal') + ';', lastPlayedText));
-                        }
-
-                        // Actions — handlers bind via addEventListener, ids via dataset
-                        var actionsCell = td('padding: 10px; text-align: center; white-space: nowrap;');
-                        if (window.currentTab === 'living' || window.currentTab === 'morgue') {
-                            actionsCell.appendChild(actionButton('Condemn', 'border-color: #ff9800; color: #ff9800;', item, window.condemnSubject));
-                        } else {
-                            actionsCell.appendChild(actionButton('Pardon', 'border-color: #4CAF50; color: #4CAF50; margin-right: 5px;', item, window.pardonSubject));
-                            actionsCell.appendChild(actionButton('Exorcise', '', item, window.performLastRites));
-                        }
-                        tr.appendChild(actionsCell);
-
-                        tbody.appendChild(tr);
-                    });
-                };
-
-                // MAIN FETCH LOGIC
-                window.fetchAndRenderTable = function() {
-                    if (window.currentTab === 'visitors') {
-                        var endDate = document.getElementById('visitorEndDate').value;
-                        var weeksBack = document.getElementById('visitorWeeksBack').value;
-                        var endpoint = 'GraveyardAnalytics/Visitors?endDate=' + endDate + '&weeksBack=' + weeksBack;
-
-                        ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
-                            window.renderVisitorTable(data);
+            function runAction(endpoint, id, button, exitClass) {
+                var row = button.closest('tr');
+                return ApiClient.ajax({ type: 'POST', url: ApiClient.getUrl('GraveyardAnalytics/' + endpoint + '/' + id) })
+                    .then(function () {
+                        row.className = 'gy-row-exit ' + exitClass;
+                        setTimeout(fetchAndRender, ROW_EXIT_MS);
+                    })
+                    .catch(function (error) {
+                        return describeFailure(error).then(function (message) {
+                            // The table's contents are no longer trustworthy after a failed write,
+                            // so it says so rather than leaving rows that may or may not be stale.
+                            renderError(message);
                         });
-                    } else if (window.currentTab === 'settings' || window.currentTab === 'tracearr') {
-                        return;
-                    } else {
-                        var type = document.getElementById('mediaTypeFilter').value;
-                        var limit = document.getElementById('limitFilter').value;
-                        var text = document.getElementById('mediaSearch').value;
-                        var encodedText = encodeURIComponent(text);
+                    });
+            }
 
-                        var endpoint = '';
-                        if (window.currentTab === 'living') endpoint = 'GraveyardAnalytics/Living?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
-                        else if (window.currentTab === 'morgue') {
-                            var barely = document.getElementById('includeBarelyTouched').checked;
-                            var unverifiable = document.getElementById('includeUnverifiable').checked;
-                            endpoint = 'GraveyardAnalytics/LeastWatched?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText
-                                + '&includeBarelyTouched=' + barely + '&includeUnverifiable=' + unverifiable;
+            function condemnSubject(id, name, button) {
+                if (!window.confirm('Move "' + name + '" to The Chapel?')) return;
+                runAction('Condemn', id, button, 'gy-row-exit--right');
+            }
+
+            function pardonSubject(id, name, button) {
+                if (!window.confirm('Pardon "' + name + '"?')) return;
+                runAction('Pardon', id, button, 'gy-row-exit--left');
+            }
+
+            function performLastRites(id, name, button) {
+                if (!window.confirm('Permanently delete "' + name + '" from your storage?')) return;
+                runAction('LastRites', id, button, 'gy-row-exit--deleted');
+            }
+
+            // ---- Fetching ----------------------------------------------------------------
+
+            function endpointFor(tab) {
+                if (tab === 'visitors') {
+                    return 'GraveyardAnalytics/Visitors'
+                        + '?endDate=' + encodeURIComponent($('visitorEndDate').value)
+                        + '&weeksBack=' + encodeURIComponent($('visitorWeeksBack').value);
+                }
+
+                var query = 'mediaType=' + encodeURIComponent($('mediaTypeFilter').value)
+                    + '&limit=' + encodeURIComponent($('limitFilter').value)
+                    + '&mediaSearch=' + encodeURIComponent($('mediaSearch').value);
+
+                if (tab === 'living') return 'GraveyardAnalytics/Living?' + query;
+                if (tab === 'chapel') return 'GraveyardAnalytics/Purgatory?' + query;
+
+                return 'GraveyardAnalytics/LeastWatched?' + query
+                    + '&includeBarelyTouched=' + $('includeBarelyTouched').checked
+                    + '&includeUnverifiable=' + $('includeUnverifiable').checked;
+            }
+
+            function fetchAndRender() {
+                if (state.tab === 'settings' || state.tab === 'tracearr') return Promise.resolve();
+
+                var generation = ++state.request;
+                var tab = state.tab;
+                var current = function () { return generation === state.request; };
+
+                renderLoading();
+
+                return ApiClient.getJSON(ApiClient.getUrl(endpointFor(tab)))
+                    .then(function (data) {
+                        if (!current()) return;
+                        if (tab === 'visitors') {
+                            renderVisitorTable(data);
+                        } else {
+                            renderTotals(data || {});
+                            renderCoverageBanner(data || {});
+                            renderMediaTable((data && data.Items) || [], data);
                         }
-                        else endpoint = 'GraveyardAnalytics/Purgatory?mediaType=' + type + '&limit=' + limit + '&mediaSearch=' + encodedText;
-
-                        ApiClient.getJSON(ApiClient.getUrl(endpoint)).then(function (data) {
-                            window.renderTotals(data);
-                            window.renderCoverageBanner(data);
-                            window.renderMediaTable(data.Items, data);
+                    })
+                    .catch(function (error) {
+                        return describeFailure(error).then(function (message) {
+                            if (current()) renderError(message);
                         });
-                    }
-                };
+                    });
+            }
 
-                // EVENT LISTENERS
-                var searchTimeout = null;
-                document.getElementById('mediaSearch').addEventListener('input', function(e) {
-                    if (searchTimeout) clearTimeout(searchTimeout);
-                    searchTimeout = setTimeout(window.fetchAndRenderTable, 500);
+            // ---- Tabs --------------------------------------------------------------------
+
+            var TAB_TEXT = {
+                media: {
+                    title: 'THE GRAVEYARD',
+                    description: "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and perform Last Rites."
+                },
+                visitors: {
+                    title: 'THE GUESTBOOK',
+                    description: 'Monitor server traffic, review playback sessions, and track the lingering ghosts.'
+                },
+                settings: {
+                    title: 'PLUGIN CONFIGURATION',
+                    description: 'Configure backend data providers and API integrations.'
+                },
+                tracearr: {
+                    title: 'TRACEARR COMMAND CENTER',
+                    description: 'Manage active webhooks and automated library cleanup rules.'
+                }
+            };
+
+            // State and header only, with no fetch and no visibility change — the seam the jsdom
+            // harnesses drive a single renderer through.
+            function setTab(tab) {
+                state.tab = tab;
+                renderHead(columnsFor(tab));
+            }
+
+            function switchTab(tab) {
+                // Bumped before anything is torn down, so a response still in flight for the tab
+                // being left cannot land in the new tab's table.
+                state.request++;
+                setTab(tab);
+
+                page.querySelectorAll('.gy-tab').forEach(function (button) {
+                    button.classList.toggle('is-active', button.dataset.tab === tab);
                 });
 
-                document.getElementById('includeBarelyTouched').addEventListener('change', window.fetchAndRenderTable);
-                document.getElementById('includeUnverifiable').addEventListener('change', window.fetchAndRenderTable);
-                document.getElementById('mediaTypeFilter').addEventListener('change', window.fetchAndRenderTable);
-                document.getElementById('limitFilter').addEventListener('change', window.fetchAndRenderTable);
-                document.getElementById('visitorEndDate').addEventListener('change', window.fetchAndRenderTable);
-                document.getElementById('visitorWeeksBack').addEventListener('change', window.fetchAndRenderTable);
+                var isVisitors = tab === 'visitors';
+                var isMedia = tab === 'living' || tab === 'morgue' || tab === 'chapel';
 
-                // Initial load
-                window.loadPluginConfig();
-                window.switchTab('morgue');
+                els.totalCard.hidden = !isMedia;
+                els.mediaFilters.hidden = !isMedia;
+                els.barelyFilter.hidden = tab !== 'morgue';
+                els.unverifiableFilter.hidden = tab !== 'morgue';
+                els.banner.hidden = true;
+                els.summary.hidden = !isVisitors;
+                els.visitorFilters.hidden = !isVisitors;
+                els.tableWrap.hidden = !(isMedia || isVisitors);
+                els.settings.hidden = tab !== 'settings';
+                els.tracearr.hidden = tab !== 'tracearr';
+
+                clearTotals('0 B');
+                if (!isVisitors) clearSummary();
+
+                var text = TAB_TEXT[isMedia ? 'media' : tab] || TAB_TEXT.media;
+                els.title.textContent = text.title;
+                els.description.textContent = text.description;
+
+                return fetchAndRender();
+            }
+
+            // ---- Configuration -----------------------------------------------------------
+
+            function applyTracearrState(enabled) {
+                $('EnableTracearr').checked = enabled;
+                els.tracearrFields.hidden = !enabled;
+                els.tracearrTab.hidden = !enabled;
+            }
+
+            function loadPluginConfig() {
+                return ApiClient.getPluginConfiguration(PLUGIN_ID)
+                    .then(function (config) {
+                        var settings = config || {};
+                        $('TracearrUrl').value = settings.TracearrUrl || '';
+                        $('TracearrApiKey').value = settings.TracearrApiKey || '';
+                        applyTracearrState(!!settings.EnableTracearr);
+                    })
+                    .catch(function (error) {
+                        return describeFailure(error).then(function (message) {
+                            showSaveFailure('The configuration could not be loaded. ' + message);
+                        });
+                    });
+            }
+
+            function showSaveFailure(message) {
+                els.saved.hidden = true;
+                els.saveFailed.textContent = message;
+                els.saveFailed.hidden = false;
+            }
+
+            function savePluginConfig() {
+                var enabled = $('EnableTracearr').checked;
+                var url = $('TracearrUrl').value;
+                var key = $('TracearrApiKey').value;
+
+                els.saveFailed.hidden = true;
+
+                return ApiClient.getPluginConfiguration(PLUGIN_ID)
+                    .then(function (config) {
+                        var settings = config || {};
+                        settings.EnableTracearr = enabled;
+                        settings.TracearrUrl = url;
+                        settings.TracearrApiKey = key;
+                        return ApiClient.updatePluginConfiguration(PLUGIN_ID, settings);
+                    })
+                    .then(function () {
+                        els.saved.hidden = false;
+                        setTimeout(function () { els.saved.hidden = true; }, SAVED_MESSAGE_MS);
+
+                        els.tracearrTab.hidden = !enabled;
+                        if (!enabled && state.tab === 'tracearr') switchTab('settings');
+                    })
+                    .catch(function (error) {
+                        return describeFailure(error).then(function (message) {
+                            showSaveFailure('Not saved. ' + message);
+                        });
+                    });
+            }
+
+            // ---- Listeners ---------------------------------------------------------------
+            // Registered once, at script evaluation. Jellyfin fires `viewshow` on every return to
+            // the page, so registering in that handler accumulated a duplicate set per visit and
+            // the Nth visit issued N fetches per keystroke (finding 7).
+
+            page.querySelector('.gy-tabs').addEventListener('click', function (event) {
+                var button = event.target.closest('.gy-tab');
+                if (button && button.dataset.tab) switchTab(button.dataset.tab);
             });
+
+            $('saveConfig').addEventListener('click', savePluginConfig);
+
+            // The button is type=button, so this only catches Enter pressed inside a field.
+            $('graveyardConfigForm').addEventListener('submit', function (event) {
+                event.preventDefault();
+                savePluginConfig();
+            });
+
+            $('EnableTracearr').addEventListener('change', function () {
+                els.tracearrFields.hidden = !this.checked;
+            });
+
+            var searchTimeout = null;
+            $('mediaSearch').addEventListener('input', function () {
+                if (searchTimeout) clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(fetchAndRender, SEARCH_DEBOUNCE_MS);
+            });
+
+            ['includeBarelyTouched', 'includeUnverifiable', 'mediaTypeFilter', 'limitFilter',
+                'visitorEndDate', 'visitorWeeksBack'].forEach(function (id) {
+                $(id).addEventListener('change', fetchAndRender);
+            });
+
+            // Default the Guestbook's end date to today, in the admin's own zone: it is a date
+            // picker the admin reads, not a timestamp crossing the wire.
+            var today = new Date();
+            $('visitorEndDate').value = today.getFullYear()
+                + '-' + String(today.getMonth() + 1).padStart(2, '0')
+                + '-' + String(today.getDate()).padStart(2, '0');
+
+            // `viewshow` now only refreshes: it re-reads the saved configuration (so a setting
+            // saved elsewhere takes effect) and re-enters the current tab.
+            page.addEventListener('viewshow', function () {
+                loadPluginConfig();
+                switchTab(state.tab);
+            });
+
+            // The one global this page defines, and the page itself never reads it: it is the seam
+            // the jsdom harnesses in tests/harness/dashboard drive. Everything else — the tab, the
+            // in-flight generation, every renderer — stays inside this closure.
+            window.GraveyardDashboard = {
+                setTab: setTab,
+                switchTab: switchTab,
+                fetchAndRender: fetchAndRender,
+                renderMediaTable: renderMediaTable,
+                renderVisitorTable: renderVisitorTable,
+                renderCoverageBanner: renderCoverageBanner,
+                renderTotals: renderTotals,
+                loadPluginConfig: loadPluginConfig,
+                savePluginConfig: savePluginConfig
+            };
         })();
     </script>
 </div>
