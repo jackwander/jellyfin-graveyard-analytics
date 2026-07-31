@@ -136,11 +136,11 @@ csproj and `build.yaml`, publishes, zips the two assemblies into `Releases/v1.2.
 patches `manifest.json` with the real MD5 and a UTC timestamp, then commits those three
 files, tags, and pushes.
 
-Pushing the tag is what publishes. `.github/workflows/release.yml` rebuilds the same zip,
-refuses a tag that disagrees with the csproj or a checksum that disagrees with the
-committed manifest, and attaches the archive to the GitHub release. Nothing is uploaded by
-hand: the build is byte-reproducible, so CI's zip is exactly the one whose checksum went
-into the manifest.
+The zip it built is the zip it publishes — it uploads that exact file to the GitHub release
+and then re-downloads it from the `sourceUrl` in the manifest to confirm the checksum a
+client will verify. `.github/workflows/release.yml` then repeats that check after
+publication, and refuses a tag that disagrees with the csproj or an archive that is not
+exactly the two shipped assemblies.
 
 Before any of that it checks you are on `master`, that nothing but those three files is
 modified, and that the tag is not already published — then asks you to type the version

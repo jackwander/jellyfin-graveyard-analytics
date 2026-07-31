@@ -163,14 +163,18 @@ the native `runtimes/` tree.
   `--publish` refuses unless HEAD is on `master`, the tree is clean apart from
   those three files, and the tag is unused locally and on the remote, then asks
   you to type the version.
-- **The release artifact must stay byte-reproducible**, or `release.yml`'s
-  checksum gate can never pass — the manifest is committed *before* CI rebuilds
-  the zip. Three things guarantee it and all three are load-bearing: `release.sh`
-  flattens zip mtimes to the 1980 epoch and passes `-X`; the csproj sets
-  `EnableSourceControlManagerQueries=false` and
-  `IncludeSourceRevisionInInformationalVersion=false` (otherwise the commit SHA
-  lands in the DLL, which is *circular* — the checksum goes into the commit that
-  changes the SHA); and `PathMap` normalizes the absolute PDB path, which differs
-  between a dev machine and CI. Verified byte-identical across two directories,
-  with and without `.git`, across an intervening commit, and between macOS and
-  `ubuntu:22.04`.
+- **The release artifact is built once and uploaded, never rebuilt.** `release.sh`
+  publishes the exact bytes it checksummed into the manifest, so the two agree by
+  construction. `release.yml` fires on `release: published` and *verifies* —
+  version consistency, then it downloads what `sourceUrl` points at and checks the
+  MD5 and the shipped set. Do not restore the old shape, where CI rebuilt the zip
+  and compared: that gate never once passed. Four separate environment
+  differences broke it in turn — zip entry mtimes, the commit SourceLink embeds in
+  the assembly, the floating SDK version, and the compilation-options blob inside
+  the embedded PDB, which records the runtime `csc` itself ran on. Each fix only
+  revealed the next.
+  The determinism settings in the csproj and the zip mtime flattening in
+  `release.sh` are **kept** — they make rebuilds comparable and are cheap — but
+  nothing depends on them any more. Two builds of the same source are identical
+  on the same SDK (verified macOS vs Linux at 10.0.200) and differ across SDK
+  patches, which is why `global.json` pins it.

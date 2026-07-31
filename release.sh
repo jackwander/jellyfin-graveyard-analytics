@@ -117,6 +117,20 @@ command -v jq >/dev/null 2>&1 || {
   exit 1
 }
 
+# Checked up front rather than after the tag is already pushed: --publish uploads the asset
+# itself, so without gh a release would end as a tag with nothing behind it and a manifest
+# advertising a 404.
+if [ "$PUBLISH" -eq 1 ]; then
+  command -v gh >/dev/null 2>&1 || {
+    echo "❌ --publish needs the GitHub CLI to upload the release asset (brew install gh)." >&2
+    exit 1
+  }
+  gh auth status >/dev/null 2>&1 || {
+    echo "❌ gh is not authenticated. Run 'gh auth login'." >&2
+    exit 1
+  }
+fi
+
 # --- checksum, portably ----------------------------------------------------------
 # GNU coreutils has md5sum, BSD/macOS has md5 -q. The old script only knew the second.
 md5_of() {
@@ -396,9 +410,46 @@ echo "✅ Pushed $RELEASE_BRANCH"
 git push "$REMOTE" "$TAG"
 echo "✅ Pushed $TAG"
 
+# The artifact is uploaded, not rebuilt. CI used to rebuild it from the tag and compare
+# against the checksum already committed here — a gate that never once passed, because every
+# difference between this machine and the runner (zip mtimes, the commit SourceLink embeds,
+# the SDK version, the runtime recorded in the embedded PDB) changed the bytes. Publishing the
+# same file that was checksummed makes the manifest and the asset agree by construction.
+echo "⬆️  Uploading $ZIP_NAME to the $TAG release..."
+gh release create "$TAG" "$DEST_DIR/$ZIP_NAME" \
+  --title "$TAG" \
+  --notes "MD5 \`$CHECKSUM\`
+
+$CHANGELOG
+
+Install through the plugin catalogue rather than by hand — the manifest entry on \`$RELEASE_BRANCH\` points here, and its checksum has to match this exact file."
+echo "✅ Released $TAG with the zip this run checksummed"
+
+# Read it back from the URL the manifest actually points at, the way a client would. Uploading
+# and assuming is how a 404 reaches a user instead of the maintainer.
+echo "🔎 Verifying the published asset..."
+VERIFY_TMP="$(mktemp -d)"
+trap 'rm -rf "$VERIFY_TMP"' EXIT
+SOURCE_URL="$(jq -r --arg v "$VERSION" \
+  'first(.[0].versions[] | select(.version == $v) | .sourceUrl) // ""' "$MANIFEST")"
+
+if curl -fsSL -o "$VERIFY_TMP/$ZIP_NAME" "$SOURCE_URL"; then
+  PUBLISHED_SUM="$(md5_of "$VERIFY_TMP/$ZIP_NAME")"
+  if [ "$PUBLISHED_SUM" = "$CHECKSUM" ]; then
+    echo "✅ $SOURCE_URL serves $PUBLISHED_SUM — matches $MANIFEST"
+  else
+    echo "❌ Published asset is $PUBLISHED_SUM but $MANIFEST says $CHECKSUM." >&2
+    echo "   Every install of $VERSION will fail its checksum. Re-upload with:" >&2
+    echo "   gh release upload $TAG $DEST_DIR/$ZIP_NAME --clobber" >&2
+    exit 1
+  fi
+else
+  echo "⚠️  Could not fetch $SOURCE_URL to verify it (the release may still be propagating)."
+  echo "   Check it before announcing: curl -fsSL '$SOURCE_URL' | md5sum"
+fi
+
 echo "---"
-echo "🚀 $TAG published. release.yml is now building it:"
-echo "   $REPO_URL/actions"
-echo "   It re-checks the checksum against $MANIFEST and fails the release rather than"
-echo "   attaching a zip that disagrees with what clients will verify."
+echo "🚀 $TAG published and verified."
+echo "   $REPO_URL/releases/tag/$TAG"
+echo "   release.yml re-checks the same thing after publication."
 echo "---"

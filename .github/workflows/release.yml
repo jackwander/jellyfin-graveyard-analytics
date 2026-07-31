@@ -1,39 +1,40 @@
 name: Release
 
-# Fires on a vX.X.X.X tag. It builds the same two files release.sh stages, attaches the zip
-# to the GitHub release, and prints the checksum — then stops.
+# Verifies a published release. It does NOT build one.
 #
-# It deliberately does not patch manifest.json. That file is served from master and is what
-# every installed client polls; rewriting it from a tag build would mean a release is
-# announced to users before anyone has confirmed the zip is right. The manifest edit stays
-# a commit on master, which release.sh makes into one command.
+# It used to: CI rebuilt the zip from the tag and refused to publish unless its MD5 matched
+# the checksum already committed in manifest.json. That gate never once passed. Every
+# difference between the maintainer's machine and the runner became a release-blocking bug,
+# and there were four — zip entry mtimes, the git commit SourceLink embeds in the assembly,
+# the floating SDK version, and finally the compilation-options blob inside the embedded PDB,
+# which records the runtime csc itself ran on. Each fix only revealed the next.
+#
+# The mistake was building the artifact twice and shipping one of them. release.sh now
+# uploads the exact bytes it checksummed, so the manifest and the asset agree by construction
+# rather than by coincidence. What is still worth checking is that the three places the
+# version is written agree, and that the file behind sourceUrl really is the one the manifest
+# promises — which is what an installing client verifies.
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to build (vX.X.X.X)"
+        description: "Tag to verify (vX.X.X.X)"
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
+  verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.200"   # exact: see global.json
-
       - name: Resolve the version
         id: version
         run: |
           set -euo pipefail
-          raw="${{ github.event.inputs.tag || github.ref_name }}"
+          raw="${{ github.event.inputs.tag || github.event.release.tag_name }}"
           version="${raw#v}"
           if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'; then
             echo "::error::'$raw' is not a four-part version."
@@ -42,9 +43,13 @@ jobs:
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      # The tag is the source of truth for what is being shipped, and the assembly version is
-      # what Jellyfin shows on the Plugins page. If those disagree, the release installs and
-      # then reports the wrong version forever — and nothing else in the pipeline notices.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.version.outputs.tag }}
+
+      # The assembly version is what Jellyfin shows on the Plugins page and manifest.json is
+      # what the catalogue offers. If they disagree the plugin installs and then reports the
+      # wrong version forever, and nothing else in the pipeline notices.
       - name: Check the tag matches what the tree says it is
         run: |
           set -euo pipefail
@@ -60,48 +65,44 @@ jobs:
           [ "$yaml" = "$expected" ]   || { echo "::error::build.yaml says $yaml, tag says $expected"; fail=1; }
           exit $fail
 
-      # One implementation of "what a release contains", shared with the maintainer's machine.
-      # This step used to re-derive it: it published, staged and zipped with its own commands,
-      # and that copy was missing the mtime flattening release.sh does — so CI's archive could
-      # never match the checksum committed in the manifest, and v1.2.0.1 failed exactly there.
-      # release.sh --dry-run runs the suite, publishes, and writes the same normalized zip
-      # without touching manifest.json.
-      - name: Build the release artifact
-        run: ./release.sh "${{ steps.version.outputs.tag }}" --dry-run
-
-      - name: Checksum it
-        id: package
+      # The contract itself, checked the way a client checks it: fetch what sourceUrl points
+      # at and confirm it is the file the manifest promises. A mismatch means every install of
+      # this version fails, which is exactly how v1.2.0.1 was found — by a 404, from a user.
+      - name: Check the published asset against the manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          path="Releases/${{ steps.version.outputs.tag }}/JellyfinGraveyardAnalytics.zip"
-          test -f "$path" || { echo "::error::release.sh produced no zip at $path"; exit 1; }
-          echo "checksum=$(md5sum "$path" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "path=$path" >> "$GITHUB_OUTPUT"
+          version="${{ steps.version.outputs.version }}"
+          tag="${{ steps.version.outputs.tag }}"
 
-      # The manifest is committed ahead of the tag, so this catches the case where the zip
-      # CI built is not the zip the checksum was computed from — a mismatch every client
-      # would otherwise discover as a failed install.
-      - name: Check the checksum against the committed manifest
-        run: |
-          set -euo pipefail
-          expected=$(jq -r --arg v "${{ steps.version.outputs.version }}" \
+          expected=$(jq -r --arg v "$version" \
             'first(.[0].versions[] | select(.version == $v) | .checksum) // ""' manifest.json)
+          url=$(jq -r --arg v "$version" \
+            'first(.[0].versions[] | select(.version == $v) | .sourceUrl) // ""' manifest.json)
 
           if [ -z "$expected" ]; then
-            echo "::warning::manifest.json has no entry for ${{ steps.version.outputs.version }} yet."
-          elif [ "$expected" != "${{ steps.package.outputs.checksum }}" ]; then
-            echo "::error::manifest says $expected, this build produced ${{ steps.package.outputs.checksum }}"
+            echo "::error::manifest.json has no entry for $version"
             exit 1
           fi
 
-      - name: Attach the zip to the release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          files: ${{ steps.package.outputs.path }}
-          body: |
-            MD5 `${{ steps.package.outputs.checksum }}`
+          gh release download "$tag" --pattern 'JellyfinGraveyardAnalytics.zip' --dir asset
+          actual=$(md5sum asset/JellyfinGraveyardAnalytics.zip | cut -d' ' -f1)
 
-            Install through the plugin catalogue rather than by hand — the manifest entry on
-            `master` is what points here, and its checksum has to match this exact file.
-          fail_on_unmatched_files: true
+          echo "manifest : $expected"
+          echo "asset    : $actual"
+          echo "sourceUrl: $url"
+
+          if [ "$expected" != "$actual" ]; then
+            echo "::error::the published asset does not match manifest.json — every install of $version will fail its checksum"
+            exit 1
+          fi
+
+          # Exactly the two shipped assemblies. Jellyfin already loads SQLite, and a second
+          # copy of the native provider in the plugin directory is a load failure.
+          unzip -Z1 asset/JellyfinGraveyardAnalytics.zip | sort > /tmp/have
+          printf 'Dapper.dll\nJellyfinGraveyardAnalyticsPlugin.dll\n' > /tmp/want
+          diff /tmp/want /tmp/have \
+            || { echo "::error::the archive is not exactly the two shipped assemblies"; exit 1; }
+
+          echo "✅ $tag is installable: asset matches the manifest and carries the shipped set."
