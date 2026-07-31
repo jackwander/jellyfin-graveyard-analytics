@@ -84,7 +84,7 @@ mutating the source, not asserted — if you add to it, do the same.
 are a *mirror* of controller logic that must be updated alongside it.
 
 Expected results, so a regression is obvious: suite **91**; dashboard `xss` 32,
-`actions` 24, `dates` 6, `tabs` 32, `home` 15; dotnet `abi` 5 (per ABI), `repository` 27,
+`actions` 24, `dates` 6, `tabs` 32, `home` 27; dotnet `abi` 5 (per ABI), `repository` 27,
 `di` 19, `ttlcache` 12, `visitormap` 21; `formatbytes` and `probes` print tables
 rather than counts.
 

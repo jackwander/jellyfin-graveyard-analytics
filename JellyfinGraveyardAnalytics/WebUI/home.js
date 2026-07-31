@@ -94,28 +94,50 @@
     // Titles come from filenames and are attacker-influenced, so every one of these is
     // textContent or an attribute set through the DOM API. The same rule the admin dashboard
     // follows; there is no innerHTML in this file.
+    // Built out of the web client's own card classes rather than a bespoke card. Hand-rolled
+    // markup sat flush against the page edge while every native row was indented, and the
+    // posters came out half size — reusing `card overflowPortraitCard` and friends inherits
+    // the sizing, spacing, hover and focus behaviour instead of approximating them.
+    //
+    // The `graveyard-leaving-*` classes are kept alongside as stable hooks: they are what the
+    // harness asserts on, and they are ours to rename, whereas the Jellyfin ones are not.
     function buildCard(item) {
+        var card = document.createElement('div');
+        card.className = 'card overflowPortraitCard card-hoverable graveyard-leaving-item';
+
+        var box = document.createElement('div');
+        box.className = 'cardBox cardBox-bottompadded';
+
+        var scalable = document.createElement('div');
+        scalable.className = 'cardScalable';
+
+        // Gives the card its aspect ratio; Jellyfin's own rows do exactly this.
+        var padder = document.createElement('div');
+        padder.className = 'cardPadder cardPadder-overflowPortrait';
+        scalable.appendChild(padder);
+
         var link = document.createElement('a');
-        link.className = 'graveyard-leaving-card';
+        link.className = 'cardImageContainer coveredImage cardContent itemAction graveyard-leaving-card';
         link.href = '#/details?id=' + encodeURIComponent(item.Id);
         link.title = item.Name || '';
 
-        var art = document.createElement('div');
-        art.className = 'graveyard-leaving-art';
         try {
             var url = window.ApiClient.getImageUrl(item.Id, { type: 'Primary', maxHeight: 300 });
-            if (url) art.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
+            if (url) link.style.backgroundImage = 'url("' + url.replace(/"/g, '%22') + '")';
         } catch (err) {
             log('no artwork for an item', err);
         }
-        link.appendChild(art);
+
+        scalable.appendChild(link);
+        box.appendChild(scalable);
 
         var name = document.createElement('div');
-        name.className = 'graveyard-leaving-name';
+        name.className = 'cardText cardTextCentered cardText-first graveyard-leaving-name';
         name.textContent = item.Name || 'Unknown';
-        link.appendChild(name);
+        box.appendChild(name);
 
-        return link;
+        card.appendChild(box);
+        return card;
     }
 
     function buildSection(collection, items) {
@@ -123,22 +145,32 @@
         section.id = SECTION_ID;
         section.className = 'verticalSection graveyard-leaving-section';
 
+        // padded-left is what aligns the heading with every other row on the page. Without it
+        // the section starts at the viewport edge while the native ones are indented, which is
+        // what made this look bolted on rather than built in.
+        var titleRow = document.createElement('div');
+        titleRow.className = 'sectionTitleContainer sectionTitleContainer-cards padded-left';
+
         var heading = document.createElement('h2');
-        heading.className = 'sectionTitle graveyard-leaving-title';
+        heading.className = 'sectionTitle sectionTitle-cards graveyard-leaving-title';
         heading.textContent = 'Leaving Soon';
-        section.appendChild(heading);
+        titleRow.appendChild(heading);
 
-        var strip = document.createElement('div');
-        strip.className = 'graveyard-leaving-strip';
-        items.forEach(function (item) { strip.appendChild(buildCard(item)); });
-        section.appendChild(strip);
-
-        // The row is a teaser; the collection is the full list.
+        // The row is a teaser; the collection is the full list. It sits beside the heading the
+        // way Jellyfin's own "see all" affordances do, rather than as a bare link trailing off
+        // the bottom of the section.
         var more = document.createElement('a');
         more.className = 'graveyard-leaving-more';
         more.href = '#/details?id=' + encodeURIComponent(collection.Id);
-        more.textContent = 'See everything in The Chapel';
-        section.appendChild(more);
+        more.textContent = 'See all';
+        titleRow.appendChild(more);
+
+        section.appendChild(titleRow);
+
+        var strip = document.createElement('div');
+        strip.className = 'itemsContainer padded-left padded-right graveyard-leaving-strip';
+        items.forEach(function (item) { strip.appendChild(buildCard(item)); });
+        section.appendChild(strip);
 
         return section;
     }
@@ -147,15 +179,16 @@
         if (document.getElementById('graveyardLeavingStyles')) return;
         var style = document.createElement('style');
         style.id = 'graveyardLeavingStyles';
+        // Deliberately thin. Sizing, spacing, hover and focus all come from the web client's
+        // own card rules now; anything restated here would only drift from them. What is left
+        // is the horizontal scroll (Jellyfin's rows get that from a scroller component this
+        // does not use) and the placement of the "see all" link.
         style.textContent = [
-            '.graveyard-leaving-section{margin:0 0 2em;}',
-            '.graveyard-leaving-title{margin-bottom:.4em;}',
-            '.graveyard-leaving-strip{display:flex;gap:12px;overflow-x:auto;padding-bottom:6px;}',
-            '.graveyard-leaving-card{flex:0 0 auto;width:140px;text-decoration:none;color:inherit;}',
-            '.graveyard-leaving-art{width:140px;height:210px;border-radius:6px;background:#222 center/cover no-repeat;border:1px solid #333;}',
-            '.graveyard-leaving-name{margin-top:.4em;font-size:.85em;line-height:1.25;overflow:hidden;' +
-                'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}',
-            '.graveyard-leaving-more{display:inline-block;margin-top:.6em;font-size:.85em;opacity:.75;}'
+            '.graveyard-leaving-strip{display:flex;overflow-x:auto;overflow-y:hidden;}',
+            '.graveyard-leaving-strip > .card{flex:0 0 auto;}',
+            '.graveyard-leaving-section .sectionTitleContainer{display:flex;align-items:baseline;}',
+            '.graveyard-leaving-more{margin-left:1em;font-size:.85em;opacity:.75;text-decoration:none;}',
+            '.graveyard-leaving-more:hover{opacity:1;text-decoration:underline;}'
         ].join('');
         document.head.appendChild(style);
     }

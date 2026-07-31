@@ -91,6 +91,28 @@ check('and there is a way through to the whole collection',
 check('the item query is scoped to the collection',
   r.calls.some(c => c.ParentId === 'col-1'), JSON.stringify(r.calls));
 
+// ---- 2b. It borrows the web client's own classes ------------------------------------------
+// The first version hand-rolled its markup and looked bolted on: flush against the page edge
+// while every native row was indented, with half-size posters. These are the classes that make
+// it inherit the real layout — dropping padded-left in particular is what caused that.
+{
+  const s = r.doc.querySelector(SECTION);
+  const want = [
+    ['section is a vertical section', s, 'verticalSection'],
+    ['title row is indented like every other row', s.querySelector('.sectionTitleContainer'), 'padded-left'],
+    ['heading uses the native section title', s.querySelector('.graveyard-leaving-title'), 'sectionTitle'],
+    ['strip is an items container', s.querySelector('.graveyard-leaving-strip'), 'itemsContainer'],
+    ['cards are real cards', s.querySelector('.graveyard-leaving-item'), 'overflowPortraitCard'],
+    ['artwork uses the native image container', s.querySelector('.graveyard-leaving-card'), 'cardImageContainer'],
+    ['captions use the native card text', s.querySelector('.graveyard-leaving-name'), 'cardText'],
+  ];
+  for (const [name, el, cls] of want) {
+    check(`native styling: ${name} (.${cls})`,
+      !!el && el.classList.contains(cls),
+      el ? `classes=${el.className}` : 'element missing');
+  }
+}
+
 // ---- 3. Titles are filenames, so they are attacker-influenced ------------------------------
 const PAYLOAD = '<img src=x onerror=alert(1)>';
 r = await run({ items: [{ Id: 'a', Name: PAYLOAD }] });
