@@ -15,9 +15,9 @@
       Jellyfin reads the assembly version when it lists an installed plugin, so a
       missing one showed as 1.0.0.0 whatever the release was called.
     -->
-    <Version>1.2.0.2</Version>
-    <AssemblyVersion>1.2.0.2</AssemblyVersion>
-    <FileVersion>1.2.0.2</FileVersion>
+    <Version>1.2.0.3</Version>
+    <AssemblyVersion>1.2.0.3</AssemblyVersion>
+    <FileVersion>1.2.0.3</FileVersion>
     <Authors>jackwander</Authors>
     <Product>Graveyard Analytics</Product>
     <Company>jackwander</Company>
