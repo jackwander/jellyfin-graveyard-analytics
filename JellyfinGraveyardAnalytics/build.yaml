@@ -4,7 +4,7 @@
 # which is how `artifacts` kept naming a DLL the build stopped producing.
 name: "jellyfin-plugin-graveyard-analytics"
 guid: "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21"
-version: "1.2.0.3"
+version: "1.2.0.4"
 # The lowest server this can actually load on, and it must equal manifest.json's targetAbi.
 # Not 10.11.0.0, which this claimed: the assembly references name the version the csproj pins,
 # and .NET rolls an assembly reference forward but never back — so on 10.11.0-10.11.5 the plugin
