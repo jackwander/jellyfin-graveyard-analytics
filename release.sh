@@ -197,7 +197,9 @@ fi
 # than failing after the push.
 if [ "$SKIP_TESTS" -eq 0 ]; then
   echo "🧪 Testing..."
-  dotnet test "$TEST_PROJECT" -c Release -p:TreatWarningsAsErrors=true --nologo --verbosity quiet
+  # stdin from /dev/null so the child cannot drain the terminal out from under the
+  # confirmation prompt further down.
+  dotnet test "$TEST_PROJECT" -c Release -p:TreatWarningsAsErrors=true --nologo --verbosity quiet < /dev/null
 else
   echo "⚠️  Skipping tests (--skip-tests)."
 fi
@@ -216,7 +218,7 @@ fi
 # --- build -----------------------------------------------------------------------
 # Warnings as errors here too, so a release cannot be cut from a tree CI would reject.
 echo "🔨 Publishing..."
-dotnet publish "$CSPROJ" -c Release -p:TreatWarningsAsErrors=true
+dotnet publish "$CSPROJ" -c Release -p:TreatWarningsAsErrors=true < /dev/null
 
 DEST_DIR="Releases/$TAG"
 ZIP_NAME="JellyfinGraveyardAnalytics.zip"
@@ -356,11 +358,33 @@ echo "  $TAG → publishes the GitHub release and the manifest entry clients pol
 echo ""
 
 if [ "$ASSUME_YES" -eq 0 ]; then
+  # Read from the terminal device, not stdin. By this point dotnet test and dotnet publish
+  # have run, and a child that drains stdin leaves `read` at EOF — which is indistinguishable
+  # from a wrong answer, because the characters you type are echoed by the terminal whether
+  # or not the shell ever captures them. That is exactly how this failed the first time it
+  # was used: "Type the version to confirm (1.2.0.0): 1.2.0.0" followed by "Not confirmed".
+  CONFIRM=""
+  READ_OK=0
   printf 'Type the version to confirm (%s): ' "$VERSION"
-  read -r CONFIRM
-  if [ "$CONFIRM" != "$VERSION" ]; then
-    echo "❌ Not confirmed. Nothing pushed — the commit and tag are local, so 'git reset'" >&2
-    echo "   and 'git tag -d $TAG' undo them." >&2
+  if [ -r /dev/tty ]; then
+    read -r CONFIRM < /dev/tty && READ_OK=1
+  else
+    read -r CONFIRM && READ_OK=1
+  fi
+
+  if [ "$READ_OK" -eq 0 ]; then
+    echo "" >&2
+    echo "❌ No confirmation could be read from the terminal — nothing was pushed." >&2
+    echo "   Re-run with --yes, which skips this prompt." >&2
+    exit 1
+  fi
+
+  # Tolerate a stray carriage return or surrounding spaces, and accept the tag spelling.
+  CONFIRM="$(printf '%s' "$CONFIRM" | tr -d '[:space:]')"
+  if [ "$CONFIRM" != "$VERSION" ] && [ "$CONFIRM" != "$TAG" ]; then
+    echo "❌ Not confirmed: got '$CONFIRM', expected '$VERSION'. Nothing was pushed." >&2
+    echo "   The release commit and tag are already made, so re-running the same command" >&2
+    echo "   picks up where this left off — it will not duplicate either." >&2
     exit 1
   fi
 fi
