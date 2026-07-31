@@ -61,6 +61,7 @@ jobs:
           node actions.test.mjs
           node dates.test.mjs
           node tabs.test.mjs
+          node home.test.mjs
 
       # A Jellyfin member removed in a later 10.11.x is not a build error: the plugin compiles
       # against its pinned reference assemblies, targetAbi is a minimum so the server loads it

@@ -69,7 +69,7 @@ store it in the repo.
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
 installed, so the plugin can be built but **not loaded** here.
 
-**The test suite is `tests/GraveyardAnalytics.Tests` (90 tests, `net10.0`).** Added
+**The test suite is `tests/GraveyardAnalytics.Tests` (91 tests, `net10.0`).** Added
 in Phase 6, run in CI on every push. It covers `FormatBytes`, D2's play threshold
 over a real SQLite file, D1's floor gate through the real `GetLeastWatchedItems`,
 the configuration clamps, finding 30's parse and its serialized form and the
@@ -83,8 +83,8 @@ mutating the source, not asserted — if you add to it, do the same.
 `tests/harness/README.md` before trusting or extending them — the webhook probes
 are a *mirror* of controller logic that must be updated alongside it.
 
-Expected results, so a regression is obvious: suite **90**; dashboard `xss` 32,
-`actions` 24, `dates` 6, `tabs` 32; dotnet `abi` 5 (per ABI), `repository` 27,
+Expected results, so a regression is obvious: suite **91**; dashboard `xss` 32,
+`actions` 24, `dates` 6, `tabs` 32, `home` 15; dotnet `abi` 5 (per ABI), `repository` 27,
 `di` 19, `ttlcache` 12, `visitormap` 21; `formatbytes` and `probes` print tables
 rather than counts.
 
@@ -152,6 +152,20 @@ the native `runtimes/` tree.
   every return to the page. Every fetch needs a `.catch` that renders the failure,
   and a response is only rendered if its `state.request` generation is still
   current.
+- The **home screen row** (`EnableHomeSection`, off by default) is the one piece of
+  this plugin that runs outside the admin UI, and it is unsupported by
+  construction: Jellyfin has no home-section API (`HomeSectionType` is a closed
+  enum, `BrandingOptions` has `CustomCss` and no JS equivalent), so
+  `Services/HomeSectionStartupFilter.cs` registers an `IStartupFilter` and injects
+  one `<script>` into `index.html`. Rules that are not stylistic: it must
+  **short-circuit rather than wrap the response body** (Jellyfin's
+  `UseResponseCompression` sits *inside* it, so a wrapping filter is handed gzip and
+  silently no-ops); it must match the **end** of the path, since it runs outside
+  `app.Map(BaseUrl, …)`; and **every failure path must fall through to the
+  untouched page**. `WebUI/home.js` must never throw into the client and must render
+  nothing when the Chapel is empty. Do not adopt the community plugins' approach of
+  Harmony-patching `Startup.Configure` or splicing the minified bundle — that is why
+  they need one build per Jellyfin patch and why a mismatch has taken servers down.
 - Release flow is `./release.sh vX.X.X.X --changelog "…" --publish`. It runs the
   suite, stamps the version into the csproj and `build.yaml`, publishes, zips,
   patches `manifest.json` (checksum + UTC timestamp), then commits those three

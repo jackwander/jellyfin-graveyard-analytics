@@ -66,6 +66,15 @@
                             </div>
                         </div>
 
+                        <div class="gy-toggle gy-toggle--home">
+                            <input type="checkbox" id="EnableHomeSection" class="gy-checkbox">
+                            <div>
+                                <label for="EnableHomeSection" class="gy-toggle-label">Show "Leaving Soon" on the home screen</label>
+                                <span class="gy-hint">Adds a row to every user's home screen listing what is currently in The Chapel, so viewers see what is at risk before it goes. The row hides itself when The Chapel is empty.</span>
+                                <span class="gy-hint gy-hint--italic">Jellyfin has no supported way for a plugin to add a home screen section, so this injects a small script into the web client. It is off by default, and a Jellyfin update can stop the row appearing — it cannot break the rest of the plugin. Takes effect on the next page load.</span>
+                            </div>
+                        </div>
+
                         <button type="button" id="saveConfig" class="gy-btn gy-btn--save">Save Configuration</button>
                         <span id="saveConfirmation" class="gy-saved" hidden>Saved successfully!</span>
                         <span id="saveFailure" class="gy-failed" hidden></span>
@@ -1085,6 +1094,7 @@
                         var settings = config || {};
                         $('TracearrUrl').value = settings.TracearrUrl || '';
                         $('TracearrApiKey').value = settings.TracearrApiKey || '';
+                        $('EnableHomeSection').checked = !!settings.EnableHomeSection;
                         applyTracearrState(!!settings.EnableTracearr);
                     })
                     .catch(function (error) {
@@ -1104,6 +1114,7 @@
                 var enabled = $('EnableTracearr').checked;
                 var url = $('TracearrUrl').value;
                 var key = $('TracearrApiKey').value;
+                var homeSection = $('EnableHomeSection').checked;
 
                 els.saveFailed.hidden = true;
 
@@ -1113,6 +1124,7 @@
                         settings.EnableTracearr = enabled;
                         settings.TracearrUrl = url;
                         settings.TracearrApiKey = key;
+                        settings.EnableHomeSection = homeSection;
                         return ApiClient.updatePluginConfiguration(PLUGIN_ID, settings);
                     })
                     .then(function () {

@@ -76,6 +76,17 @@ namespace JellyfinGraveyardAnalytics
             // action newed one up. It memoizes the library's episode index for the life of one
             // request and must not outlive it.
             serviceCollection.AddScoped<AnalyticsService>();
+
+            // The home screen row. Registering the filter is unconditional and cheap — it
+            // reads the toggle per request, so switching the feature on does not need a
+            // restart, while installing the plugin does (registration happens once, when
+            // Jellyfin builds its host).
+            //
+            // This is the only piece of the plugin that sits in the request pipeline for
+            // *every* request, so it does as little as possible: with the toggle off it
+            // checks the method and the path and calls next.
+            serviceCollection.AddSingleton<
+                Microsoft.AspNetCore.Hosting.IStartupFilter, HomeSectionStartupFilter>();
         }
     }
 }

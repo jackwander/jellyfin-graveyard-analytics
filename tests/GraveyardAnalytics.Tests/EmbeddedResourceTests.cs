@@ -23,6 +23,9 @@ public class EmbeddedResourceTests
 
     [Theory]
     [InlineData("JellyfinGraveyardAnalytics.WebUI.dashboard.html")]
+    // The home screen row's client half. Named here because the controller asks for it by this
+    // exact string, and a csproj typo would only surface as a 404 on someone's home screen.
+    [InlineData("JellyfinGraveyardAnalytics.WebUI.home.js")]
     [InlineData("JellyfinGraveyardAnalytics.Resources.thechapelcollectionthumbnail.jpg")]
     [InlineData("JellyfinGraveyardAnalytics.Resources.thechapelcollectionbackdrop.jpg")]
     public void TheResourceIsPresentAndNotEmpty(string name)

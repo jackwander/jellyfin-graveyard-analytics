@@ -85,6 +85,27 @@ Content-Type: application/json
 
 ---
 
+## 🏠 "Leaving Soon" on the home screen (optional, off by default)
+
+Condemning an item adds it to a public **Leaving Soon: The Chapel** collection, visible to
+everyone. Turn this setting on in the plugin's Settings tab and that collection also appears
+as a row on every user's home screen, so viewers see what is at risk without going looking
+for it. **The row hides itself when The Chapel is empty** — an empty row announcing that
+nothing is leaving is worse than no row.
+
+It is off by default, for a reason worth knowing. Jellyfin has no supported way for a plugin
+to add a home screen section: `HomeSectionType` is a closed enum, and branding offers custom
+CSS with no JavaScript equivalent. So this injects a small script into the web client. That
+is unsupported, and a Jellyfin web update can stop the row appearing.
+
+What it will *not* do is take anything else down with it. The injection falls back to serving
+the page untouched on any error, the script swallows its own failures, and with the setting
+off no middleware touches a single response. Turning it on takes effect on the next page
+load; installing or updating the plugin needs a server restart before the row can appear at
+all.
+
+---
+
 ## 📦 Installation
 
 To install Graveyard Analytics, add this repository to your Jellyfin server:

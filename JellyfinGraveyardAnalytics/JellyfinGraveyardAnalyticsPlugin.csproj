@@ -95,6 +95,11 @@
   <ItemGroup>
     <EmbeddedResource Include="WebUI\dashboard.html" />
     <!--
+      The home screen row's client half, served by GraveyardAnalyticsController.GetHomeScript
+      and injected into index.html only when EnableHomeSection is on.
+    -->
+    <EmbeddedResource Include="WebUI\home.js" />
+    <!--
       Chapel collection artwork. Embedded because the controller used to fetch these
       from raw.githubusercontent.com at condemn time: a plugin that only brands the
       collection correctly when the server has outbound internet and the repo is

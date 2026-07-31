@@ -55,6 +55,50 @@ namespace JellyfinGraveyardAnalytics.Controllers
         private const string ChapelBackdropResource =
             "JellyfinGraveyardAnalytics.Resources.thechapelcollectionbackdrop.jpg";
 
+        private const string HomeScriptResource = "JellyfinGraveyardAnalytics.WebUI.home.js";
+
+        /// <summary>
+        /// The client half of the home screen row, referenced by the script tag
+        /// <see cref="Services.HomeSectionStartupFilter"/> adds to <c>index.html</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Anonymous, which is a deliberate exception to this controller's
+        /// <c>RequiresElevation</c> policy and needs justifying: the browser fetches this while
+        /// loading the login page, before any user is authenticated, so an authorized endpoint
+        /// would simply 401 and the row would never appear.
+        /// </para>
+        /// <para>
+        /// What that exposes is a static asset shipped inside the plugin — the same bytes any
+        /// installer already has. It carries no configuration, no key and no library data; every
+        /// figure it displays is fetched afterwards by the browser through Jellyfin's own
+        /// authenticated API, as whoever is logged in. An unauthenticated caller learns only
+        /// that this plugin is installed.
+        /// </para>
+        /// </remarks>
+        /// <returns>The script, or 404 when the feature is switched off.</returns>
+        [HttpGet("home.js")]
+        [AllowAnonymous]
+        [Produces("application/javascript")]
+        public IActionResult GetHomeScript()
+        {
+            // Off means gone, not merely un-injected: with the toggle off there is nothing to
+            // serve, so a stale cached index.html cannot keep pulling a live script.
+            if (!_configSource.Current.EnableHomeSection)
+            {
+                return NotFound();
+            }
+
+            var stream = typeof(Plugin).Assembly.GetManifestResourceStream(HomeScriptResource);
+            if (stream is null)
+            {
+                _logger.LogError("Embedded resource {Resource} is missing from the assembly.", HomeScriptResource);
+                return NotFound();
+            }
+
+            return File(stream, "application/javascript");
+        }
+
         /// <summary>
         /// The public collection paired with the <c>[Chapel]</c> tag. Condemn looks it up (and
         /// creates it), Pardon looks it up to remove from it — spelled out in three places

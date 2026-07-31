@@ -10,6 +10,24 @@ namespace JellyfinGraveyardAnalytics.Configuration
         public string TracearrApiKey { get; set; }
         // --- End of Tracearr Integration ---
 
+        /// <summary>
+        /// Whether to add a "Leaving Soon" row to the web client's home screen, listing what
+        /// is currently in the Chapel. Off by default, and deliberately so.
+        /// </summary>
+        /// <remarks>
+        /// Jellyfin has no supported way for a plugin to add a home screen section:
+        /// <c>HomeSectionType</c> is a closed enum, and <c>BrandingOptions</c> offers
+        /// <c>CustomCss</c> with no JavaScript equivalent. The only route is injecting a script
+        /// into the web client, which is unsupported and can break when jellyfin-web changes.
+        /// <para>
+        /// So this is opt-in: with it off, no middleware touches a single response and the
+        /// plugin behaves exactly as it did before the feature existed. With it on, every
+        /// failure path falls back to serving the untouched page — the row not appearing is an
+        /// acceptable outcome, a broken web client is not.
+        /// </para>
+        /// </remarks>
+        public bool EnableHomeSection { get; set; }
+
         // Backing fields are clamped on write: the config XML is hand-editable and the
         // admin UI posts arbitrary numbers, so an out-of-range value must not reach a query.
         private int _minPlayDurationSeconds = DefaultMinPlayDurationSeconds;

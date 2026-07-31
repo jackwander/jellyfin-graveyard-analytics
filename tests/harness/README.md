@@ -5,11 +5,8 @@ suite. They are committed because each one is the evidence behind a `PLAN.md`
 finding, and because re-deriving them costs more than keeping them.
 
 **These are not the project's test suite.** That is
-`tests/GraveyardAnalytics.Tests` (90 tests), added in Phase 6 and run in CI by
+`tests/GraveyardAnalytics.Tests` (91 tests), added in Phase 6 and run in CI by
 `.github/workflows/build.yml`.
-
-**These are not the project's test suite.** That is
-`tests/GraveyardAnalytics.Tests` (90 tests).
 
 What went there and what stayed here. The suite took the claims that are about
 *shipped behaviour* and can be stated as an assertion: `FormatBytes`, D2's play
@@ -51,6 +48,7 @@ node xss.test.mjs        # 32 checks
 node actions.test.mjs    # 24 checks
 node dates.test.mjs      #  6 checks
 node tabs.test.mjs       # 32 checks
+node home.test.mjs       # 15 checks
 ```
 
 Loads `WebUI/dashboard.html`, dispatches `viewshow`, then calls the real
@@ -86,6 +84,15 @@ so a new panel that someone forgets to hide on the other five fails rather than
 lingering. Plus that saving with the engine switched off takes the Tracearr tab away
 *and* moves off it. It skips entirely on a pre-Phase-7 file: none of the panel ids
 it names existed.
+
+`home.test.mjs` drives `WebUI/home.js`, the client half of the home screen row. That script
+is unsupported by construction — Jellyfin has no API for adding a home section, so it reads
+the DOM the web client produced — which makes two properties worth pinning. It **renders
+nothing when the Chapel is empty** (an empty row announcing that nothing is leaving is worse
+than no row), and **a failure costs the row and nothing else**: no ApiClient, no container, and
+a rejecting API each leave the page untouched without throwing into it. Media titles are
+filenames, so the same textContent discipline as the dashboard is checked here too.
+Non-vacuity: dropping the `items.length` guard makes the two empty-Chapel checks fail.
 
 Phase 7 also added, in `actions.test.mjs`: **finding 7 measured** — three
 `viewshow` dispatches, then one keystroke, and a count of the fetches it caused;
