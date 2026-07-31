@@ -9,20 +9,12 @@
     "imageUrl": "https://cdn.jsdelivr.net/gh/jackwander/jellyfin-graveyard-analytics@master/images/header.png",
     "versions": [
       {
-        "version": "1.2.0.1",
-        "changelog": "Release 1.2.0.1.",
-        "targetAbi": "10.11.6.0",
-        "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.2.0.1/JellyfinGraveyardAnalytics.zip",
-        "checksum": "ccf8a6ccd99b583841727e3f9bbff7e6",
-        "timestamp": "2026-07-31T02:00:04Z"
-      },
-      {
-        "version": "1.2.0.0",
+        "version": "1.2.0.2",
         "changelog": "Fixes the Guestbook failing on Jellyfin 10.11.9 and newer, where an API change made it error out. Also: stored XSS and webhook authentication fixes; Plays, Time Played and Reach now reconcile; a rebuilt dashboard with loading, empty and error states; cached aggregates instead of a library walk per row; and a test suite. Minimum server is 10.11.6.",
         "targetAbi": "10.11.6.0",
-        "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.2.0.0/JellyfinGraveyardAnalytics.zip",
-        "checksum": "dc6d862828dd7acf96cc597cecbf602e",
-        "timestamp": "2026-07-31T01:58:47Z"
+        "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.2.0.2/JellyfinGraveyardAnalytics.zip",
+        "checksum": "8bc468a9b0fe1b6435c56c1752683f9a",
+        "timestamp": "2026-07-31T02:10:11Z"
       },
       {
         "version": "1.1.0.0",
