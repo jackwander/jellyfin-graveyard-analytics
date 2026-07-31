@@ -38,7 +38,8 @@ const shown = (name) => !id(name).hidden;
 // what it shows, and anything unlisted is asserted hidden — a new panel that someone forgets to
 // hide on the other five tabs fails rather than lingering.
 const PANELS = ['mediaTopCard', 'mediaFilters', 'barelyTouchedFilter', 'unverifiableFilter',
-  'tableContainer', 'visitorSummary', 'visitorFilters', 'settingsContainer', 'tracearrContainer'];
+  'tableContainer', 'visitorSummary', 'visitorFilters', 'settingsContainer', 'tracearrContainer',
+  'chapelSync'];
 
 const TABS = [
   {
@@ -52,9 +53,10 @@ const TABS = [
     shows: ['mediaTopCard', 'mediaFilters', 'barelyTouchedFilter', 'unverifiableFilter', 'tableContainer'],
   },
   {
+    // chapelSync is the repair for the tag/collection divergence, and belongs only here.
     tab: 'chapel', button: 'tabChapel', columns: 9, title: 'THE GRAVEYARD',
     url: 'GraveyardAnalytics/Purgatory?mediaType=Movie&limit=10&mediaSearch=',
-    shows: ['mediaTopCard', 'mediaFilters', 'tableContainer'],
+    shows: ['mediaTopCard', 'mediaFilters', 'tableContainer', 'chapelSync'],
   },
   {
     // The end date defaults to today, so this one is a pattern: the shape and the timeframe are

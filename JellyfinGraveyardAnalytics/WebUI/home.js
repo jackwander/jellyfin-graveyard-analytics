@@ -6,9 +6,16 @@
  * adding a home section, so this reads the DOM the web client produces and appends a row to it.
  *
  * The rule that shapes the whole file: a failure here must cost the row and nothing else. No
- * exception may escape, nothing existing is modified or removed, and the observer disconnects
- * itself rather than running forever. If a Jellyfin update changes the home screen, the worst
- * outcome is that the row stops appearing.
+ * exception may escape, and nothing existing is modified or removed. If a Jellyfin update
+ * changes the home screen, the worst outcome is that the row stops appearing.
+ *
+ * "No exception may escape" is stronger than it sounds, and the first release of this file got
+ * it wrong in a way no test caught. watch() called render() before installing the observer,
+ * and render() asked ApiClient for the current user without a guard. On a page load with no
+ * session yet that call throws, the exception escaped watch(), start()'s catch swallowed it,
+ * and the observer was never installed — so the feature did nothing for the rest of the
+ * session on a server where every other part of it worked. Ordering matters here: install the
+ * observer first, then try to render.
  *
  * Deliberately NOT what the community plugins do — they splice code into the minified webpack
  * bundle and hardcode identifiers per Jellyfin version ("h" on 10.10.7, "u" on 10.11). That
@@ -20,7 +27,6 @@
     var SECTION_ID = 'graveyardLeavingSoonSection';
     var COLLECTION_NAME = 'Leaving Soon: The Chapel';
     var MAX_ITEMS = 20;
-    var OBSERVER_TIMEOUT_MS = 30000;
 
     // The container the home screen renders its sections into. Checked in order; the first
     // that matches wins, so a renamed class in one release does not have to break this.
@@ -39,11 +45,21 @@
         return null;
     }
 
-    function ready() {
-        return typeof window.ApiClient !== 'undefined'
-            && window.ApiClient
-            && typeof window.ApiClient.getItems === 'function'
-            && !!window.ApiClient.getCurrentUserId();
+    /**
+     * The signed-in user, or null if there is not one yet.
+     *
+     * Guarded because it is called on every DOM mutation from the moment the page loads, and
+     * early in that life the client has no session — `getCurrentUserId` can throw rather than
+     * return nothing. An exception escaping here used to kill the whole feature for the rest
+     * of the session; see watch().
+     */
+    function currentUserId() {
+        try {
+            if (!window.ApiClient || typeof window.ApiClient.getItems !== 'function') return null;
+            return window.ApiClient.getCurrentUserId() || null;
+        } catch (err) {
+            return null;
+        }
     }
 
     /**
@@ -151,12 +167,18 @@
         if (document.getElementById(SECTION_ID)) return Promise.resolve();
 
         var container = findContainer();
-        if (!container || !ready()) return Promise.resolve();
+        if (!container) return Promise.resolve();
+
+        var userId = currentUserId();
+        if (!userId) return Promise.resolve();
 
         running = true;
-        var userId = window.ApiClient.getCurrentUserId();
 
-        return findCollection(userId)
+        // The prologue is inside the try as well: a synchronous throw here used to escape
+        // render() with `running` still true, which latched the flag and made every later
+        // attempt return immediately — one transient error became a permanent one.
+        try {
+            return findCollection(userId)
             .then(function (collection) {
                 // No collection means nothing has ever been condemned.
                 if (!collection) return null;
@@ -176,38 +198,83 @@
                 injectStyles();
                 host.appendChild(buildSection(data.collection, data.items));
             })
-            .catch(function (err) {
-                log('could not build the Leaving Soon row', err);
-            })
-            .then(function () { running = false; });
+                .catch(function (err) {
+                    log('could not build the Leaving Soon row', err);
+                })
+                .then(function () { running = false; });
+        } catch (err) {
+            running = false;
+            log('render failed before it could start', err);
+            return Promise.resolve();
+        }
+    }
+
+    function attempt() {
+        try {
+            render();
+        } catch (err) {
+            // render() should never throw, but a caller that assumes so is how this feature
+            // died once already.
+            log('render threw', err);
+        }
     }
 
     // The home screen is rendered client-side and re-rendered on navigation, so there is no
-    // single moment to hook. Watch for the container, give up after a while rather than
-    // observing the document for the life of the session, and re-arm on navigation.
-    function watch() {
-        render();
+    // single moment to hook — the only reliable trigger is watching the document.
+    //
+    // The observer is installed *before* the first render attempt, and that ordering is the
+    // whole point. It used to be the other way round, and `ready()` called
+    // `ApiClient.getCurrentUserId()` unguarded: on a page load with no session yet that threw,
+    // the exception escaped watch(), start()'s catch swallowed it, and the observer was never
+    // installed at all. The feature then did nothing for the rest of the session, silently,
+    // on a server where every other part of it worked.
+    //
+    // There is also no longer a timeout. Disconnecting after 30 seconds assumed the home
+    // screen always appears inside that window, which is untrue on a slow load or behind a
+    // login. The callback is cheap — it early-returns on an existing row — so observing for
+    // the life of the page costs little, and it also re-adds the row if the client re-renders
+    // the container out from under it.
+    var observing = false;
 
-        var observer = new MutationObserver(function () { render(); });
-        try {
-            observer.observe(document.body, { childList: true, subtree: true });
-        } catch (err) {
-            log('could not observe the document', err);
-            return;
+    function watch() {
+        if (!observing) {
+            try {
+                new MutationObserver(debounced).observe(document.body, {
+                    childList: true,
+                    subtree: true
+                });
+                observing = true;
+            } catch (err) {
+                log('could not observe the document', err);
+            }
         }
 
-        setTimeout(function () { observer.disconnect(); }, OBSERVER_TIMEOUT_MS);
+        attempt();
+    }
+
+    var pending = null;
+
+    function debounced() {
+        if (pending) return;
+        pending = setTimeout(function () {
+            pending = null;
+            attempt();
+        }, 150);
     }
 
     function start() {
         try {
             watch();
-            window.addEventListener('hashchange', function () {
-                // Cheap re-arm: navigating back to the home screen rebuilds the container.
-                setTimeout(watch, 300);
-            });
         } catch (err) {
             log('startup failed', err);
+        }
+
+        // Navigating back to the home screen rebuilds the container; the observer catches
+        // that, and this is belt and braces for clients that swap views without mutating body.
+        try {
+            window.addEventListener('hashchange', function () { setTimeout(watch, 300); });
+        } catch (err) {
+            log('could not listen for navigation', err);
         }
     }
 

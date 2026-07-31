@@ -57,6 +57,15 @@ namespace JellyfinGraveyardAnalytics.Controllers
 
         private const string HomeScriptResource = "JellyfinGraveyardAnalytics.WebUI.home.js";
 
+        /// <summary>The kinds a Condemn can apply to, and so the kinds the sync walks.</summary>
+        private static readonly Jellyfin.Data.Enums.BaseItemKind[] CondemnableKinds =
+        {
+            Jellyfin.Data.Enums.BaseItemKind.Movie,
+            Jellyfin.Data.Enums.BaseItemKind.Series
+        };
+
+        private static readonly string[] ChapelTagFilter = { "[Chapel]" };
+
         /// <summary>
         /// The client half of the home screen row, referenced by the script tag
         /// <see cref="Services.HomeSectionStartupFilter"/> adds to <c>index.html</c>.
@@ -282,6 +291,13 @@ namespace JellyfinGraveyardAnalytics.Controllers
 
                 var tags = item.Tags?.ToList() ?? new List<string>();
 
+                // The tag and the collection are ensured independently, and that separation is
+                // the fix for a real divergence: all of this used to sit inside the "tag is
+                // new" branch, so an item that was already tagged never joined the collection.
+                // Anything condemned before the collection existed — or where the add failed —
+                // stayed tagged and invisible to viewers forever, because re-condemning it hit
+                // the same guard and did nothing. The Chapel tab reads the tag and looked
+                // right; the public collection was empty.
                 if (!tags.Contains("[Chapel]", StringComparer.OrdinalIgnoreCase))
                 {
                     tags.Add("[Chapel]");
@@ -289,53 +305,15 @@ namespace JellyfinGraveyardAnalytics.Controllers
 
                     var parentItem = item.ParentId != Guid.Empty ? _libraryManager.GetItemById(item.ParentId) : null;
                     await _libraryManager.UpdateItemAsync(item, parentItem!, MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit, CancellationToken.None);
+                }
 
-                    var chapelCollection = FindChapelCollection();
-
-                    if (chapelCollection == null)
-                    {
-                        chapelCollection = await _collectionManager.CreateCollectionAsync(new MediaBrowser.Controller.Collections.CollectionCreationOptions
-                        {
-                            Name = ChapelCollectionName,
-                            IsLocked = false
-                        }).ConfigureAwait(false) as MediaBrowser.Controller.Entities.Movies.BoxSet;
-
-                        if (chapelCollection != null)
-                        {
-                            chapelCollection.Overview = ChapelCollectionOverview;
-
-                            var parent = _libraryManager.GetItemById(chapelCollection.ParentId) ?? chapelCollection.GetParent() ?? _libraryManager.RootFolder;
-
-                            await _libraryManager.UpdateItemAsync(
-                                chapelCollection,
-                                parent,
-                                MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit,
-                                CancellationToken.None
-                            ).ConfigureAwait(false);
-                        }
-                    }
-
-                    // --- IMAGE LOGIC ---
-                    if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Primary, 0))
-                    {
-                        await ApplyChapelImageAsync(
-                            chapelCollection,
-                            ChapelThumbnailResource,
-                            MediaBrowser.Model.Entities.ImageType.Primary).ConfigureAwait(false);
-                    }
-
-                    if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Backdrop, 0))
-                    {
-                        await ApplyChapelImageAsync(
-                            chapelCollection,
-                            ChapelBackdropResource,
-                            MediaBrowser.Model.Entities.ImageType.Backdrop).ConfigureAwait(false);
-                    }
-
-                    if (chapelCollection != null)
-                    {
-                        await _collectionManager.AddToCollectionAsync(chapelCollection.Id, new[] { item.Id });
-                    }
+                // Runs whether or not the tag was already there, so condemning an
+                // already-condemned item repairs its membership instead of doing nothing.
+                var chapelCollection = await EnsureChapelCollectionAsync().ConfigureAwait(false);
+                if (chapelCollection != null)
+                {
+                    await _collectionManager.AddToCollectionAsync(chapelCollection.Id, new[] { item.Id })
+                        .ConfigureAwait(false);
                 }
 
                 // Moves the item between the Morgue and the Chapel, so both tabs' cached
@@ -355,6 +333,129 @@ namespace JellyfinGraveyardAnalytics.Controllers
         /// Pardon need it and each spelled the query out; the query is also indexable, so
         /// <c>FirstOrDefault()</c> was enumerating a list it could have subscripted.
         /// </summary>
+        /// <summary>
+        /// The Chapel collection, created and branded if it does not exist yet.
+        /// </summary>
+        /// <remarks>
+        /// Idempotent: creation, the overview and both images are each applied only when
+        /// missing, so calling this on every Condemn costs a lookup and nothing else. It was
+        /// inline in <see cref="CondemnSubject"/> and reachable only when the tag was new,
+        /// which is what let the tag and the collection drift apart.
+        /// </remarks>
+        private async Task<MediaBrowser.Controller.Entities.Movies.BoxSet?> EnsureChapelCollectionAsync()
+        {
+            var chapelCollection = FindChapelCollection();
+
+            if (chapelCollection == null)
+            {
+                chapelCollection = await _collectionManager.CreateCollectionAsync(new MediaBrowser.Controller.Collections.CollectionCreationOptions
+                {
+                    Name = ChapelCollectionName,
+                    IsLocked = false
+                }).ConfigureAwait(false) as MediaBrowser.Controller.Entities.Movies.BoxSet;
+
+                if (chapelCollection != null)
+                {
+                    chapelCollection.Overview = ChapelCollectionOverview;
+
+                    var parent = _libraryManager.GetItemById(chapelCollection.ParentId)
+                        ?? chapelCollection.GetParent()
+                        ?? _libraryManager.RootFolder;
+
+                    await _libraryManager.UpdateItemAsync(
+                        chapelCollection,
+                        parent,
+                        MediaBrowser.Controller.Library.ItemUpdateType.MetadataEdit,
+                        CancellationToken.None).ConfigureAwait(false);
+                }
+            }
+
+            if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Primary, 0))
+            {
+                await ApplyChapelImageAsync(
+                    chapelCollection,
+                    ChapelThumbnailResource,
+                    MediaBrowser.Model.Entities.ImageType.Primary).ConfigureAwait(false);
+            }
+
+            if (chapelCollection is not null && !chapelCollection.HasImage(MediaBrowser.Model.Entities.ImageType.Backdrop, 0))
+            {
+                await ApplyChapelImageAsync(
+                    chapelCollection,
+                    ChapelBackdropResource,
+                    MediaBrowser.Model.Entities.ImageType.Backdrop).ConfigureAwait(false);
+            }
+
+            return chapelCollection;
+        }
+
+        /// <summary>
+        /// Adds every <c>[Chapel]</c>-tagged item that is missing from the Chapel collection.
+        /// </summary>
+        /// <remarks>
+        /// The repair for the divergence described in <see cref="CondemnSubject"/>. Condemning
+        /// is idempotent now, but that only helps items condemned from here on — a library
+        /// tagged by an earlier version would otherwise need every item pardoned and condemned
+        /// again to become visible to viewers. Additive only: it never removes anything, so an
+        /// admin who has added extra titles to the collection by hand keeps them.
+        /// </remarks>
+        /// <returns>How many items were added, and the collection's resulting size.</returns>
+        [HttpPost("SyncChapelCollection")]
+        public async Task<IActionResult> SyncChapelCollection()
+        {
+            try
+            {
+                var collection = await EnsureChapelCollectionAsync().ConfigureAwait(false);
+                if (collection == null)
+                {
+                    _logger.LogError("The Chapel collection could not be created.");
+                    return StatusCode(500, new { message = GenericFailure });
+                }
+
+                var tagged = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    IncludeItemTypes = CondemnableKinds,
+                    Tags = ChapelTagFilter,
+                    IsVirtualItem = false,
+                    Recursive = true
+                });
+
+                var present = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery
+                {
+                    ParentId = collection.Id,
+                    Recursive = false
+                }).Select(child => child.Id).ToHashSet();
+
+                var missing = tagged.Where(candidate => !present.Contains(candidate.Id))
+                    .Select(candidate => candidate.Id)
+                    .ToArray();
+
+                if (missing.Length > 0)
+                {
+                    await _collectionManager.AddToCollectionAsync(collection.Id, missing).ConfigureAwait(false);
+                }
+
+                _logger.LogInformation(
+                    "Chapel collection synced: {Added} added, {Total} tagged items in total.",
+                    missing.Length,
+                    tagged.Count);
+
+                return Ok(new
+                {
+                    added = missing.Length,
+                    total = tagged.Count,
+                    message = missing.Length == 0
+                        ? "The Chapel collection was already up to date."
+                        : $"Added {missing.Length} item(s) to the Chapel collection."
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to sync the Chapel collection.");
+                return StatusCode(500, new { message = GenericFailure });
+            }
+        }
+
         private MediaBrowser.Controller.Entities.Movies.BoxSet? FindChapelCollection()
         {
             var matches = _libraryManager.GetItemList(new MediaBrowser.Controller.Entities.InternalItemsQuery

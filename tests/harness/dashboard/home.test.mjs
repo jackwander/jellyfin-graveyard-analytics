@@ -135,7 +135,82 @@ check('no home sections container: no throw, nothing appended',
     threw === null && window.document.querySelector(SECTION) === null, String(threw));
 }
 
-// ---- 6. No innerHTML anywhere in the shipped file ------------------------------------------
+// ---- 6. The bug that shipped: a throw before the observer was installed ---------------------
+// On a real 10.11 server everything worked — the script was served, the container existed, the
+// collection resolved — and the row never appeared. watch() rendered before observing, and
+// getCurrentUserId() throws while the page has no session yet, so the exception escaped and the
+// observer was never installed. The client then did nothing for the rest of the session.
+{
+  const dom = new JSDOM('<!doctype html><html><head></head><body></body></html>',
+    { runScripts: 'dangerously', url: 'http://localhost/web/index.html' });
+  const { window } = dom;
+  let sessionReady = false;
+
+  window.ApiClient = {
+    // Exactly the real failure: it throws rather than returning nothing.
+    getCurrentUserId: () => {
+      if (!sessionReady) throw new Error('no session yet');
+      return 'user-1';
+    },
+    getImageUrl: (id) => `/Items/${id}/Images/Primary`,
+    getItems: (userId, query) => Promise.resolve({
+      Items: query.IncludeItemTypes === 'BoxSet' ? [COLLECTION] : [{ Id: 'a', Name: 'Cold Open' }],
+    }),
+  };
+
+  let threw = null;
+  try { window.eval(SOURCE); } catch (err) { threw = err; }
+  await sleep(40);
+
+  check('a throwing session at load does not take the script down',
+    threw === null, String(threw));
+  check('and nothing is rendered while there is no session',
+    window.document.querySelector(SECTION) === null, 'rendered too early');
+
+  // The home screen arrives later, as it does behind a login.
+  sessionReady = true;
+  const container = window.document.createElement('div');
+  container.className = 'homeSectionsContainer';
+  window.document.body.appendChild(container);
+  await sleep(250);
+
+  check('once the session and the home screen arrive, the row still appears',
+    window.document.querySelector(SECTION) !== null,
+    'the observer was never installed — this is the shipped bug');
+}
+
+// A synchronous throw must not latch `running` and disable every later attempt.
+{
+  const dom = new JSDOM('<!doctype html><html><head></head><body><div class="homeSectionsContainer"></div></body></html>',
+    { runScripts: 'dangerously', url: 'http://localhost/web/index.html' });
+  const { window } = dom;
+  let broken = true;
+
+  window.ApiClient = {
+    getCurrentUserId: () => 'user-1',
+    getImageUrl: (id) => `/Items/${id}/Images/Primary`,
+    getItems: (userId, query) => {
+      if (broken) throw new Error('transient');
+      return Promise.resolve({
+        Items: query.IncludeItemTypes === 'BoxSet' ? [COLLECTION] : [{ Id: 'a', Name: 'Cold Open' }],
+      });
+    },
+  };
+
+  window.eval(SOURCE);
+  await sleep(40);
+  check('a synchronous API throw renders nothing, as expected',
+    window.document.querySelector(SECTION) === null, 'rendered despite throwing');
+
+  broken = false;
+  window.document.body.appendChild(window.document.createElement('div'));
+  await sleep(250);
+  check('and it recovers once the API works — the failure is not latched',
+    window.document.querySelector(SECTION) !== null,
+    '`running` stayed true after the throw');
+}
+
+// ---- 7. No innerHTML anywhere in the shipped file ------------------------------------------
 check('the script never assigns innerHTML',
   !/\.innerHTML\s*=/.test(SOURCE), 'innerHTML assignment found');
 

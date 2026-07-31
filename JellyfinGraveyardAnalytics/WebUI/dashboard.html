@@ -118,6 +118,12 @@
                     </div>
                 </div>
 
+                <div id="chapelSync" class="gy-filters" hidden>
+                    <button type="button" id="syncChapel" class="gy-btn gy-btn--pardon">Sync collection</button>
+                    <span class="gy-hint">Adds every condemned item to the public "Leaving Soon: The Chapel" collection. Items condemned by an older version were tagged but never added, so the collection — and the home screen row — could be empty while this tab is full.</span>
+                    <span id="chapelSyncResult" class="gy-saved" hidden></span>
+                </div>
+
                 <div id="coverageBanner" class="gy-banner" hidden></div>
 
                 <div id="visitorFilters" class="gy-filters" hidden>
@@ -545,6 +551,8 @@
                 barelyFilter: $('barelyTouchedFilter'),
                 unverifiableFilter: $('unverifiableFilter'),
                 banner: $('coverageBanner'),
+                chapelSync: $('chapelSync'),
+                chapelSyncResult: $('chapelSyncResult'),
                 visitorFilters: $('visitorFilters'),
                 tableWrap: $('tableContainer'),
                 head: $('tableHead'),
@@ -1064,6 +1072,8 @@
                 els.barelyFilter.hidden = tab !== 'morgue';
                 els.unverifiableFilter.hidden = tab !== 'morgue';
                 els.banner.hidden = true;
+                els.chapelSync.hidden = tab !== 'chapel';
+                els.chapelSyncResult.hidden = true;
                 els.summary.hidden = !isVisitors;
                 els.visitorFilters.hidden = !isVisitors;
                 els.tableWrap.hidden = !(isMedia || isVisitors);
@@ -1152,6 +1162,29 @@
             });
 
             $('saveConfig').addEventListener('click', savePluginConfig);
+
+            // Repairs the divergence between the [Chapel] tag and the public collection. The
+            // two used to be written in one branch, so anything already tagged never joined
+            // the collection and no amount of re-condemning fixed it.
+            $('syncChapel').addEventListener('click', function () {
+                var button = $('syncChapel');
+                button.disabled = true;
+                els.chapelSyncResult.hidden = true;
+
+                ApiClient.ajax({
+                    type: 'POST',
+                    url: ApiClient.getUrl('GraveyardAnalytics/SyncChapelCollection'),
+                    dataType: 'json'
+                }).then(function (result) {
+                    els.chapelSyncResult.textContent = (result && result.message) || 'Collection synced.';
+                    els.chapelSyncResult.hidden = false;
+                }).catch(function (error) {
+                    return describeFailure(error).then(function (message) {
+                        els.chapelSyncResult.textContent = message;
+                        els.chapelSyncResult.hidden = false;
+                    });
+                }).then(function () { button.disabled = false; });
+            });
 
             // The button is type=button, so this only catches Enter pressed inside a field.
             $('graveyardConfigForm').addEventListener('submit', function (event) {
