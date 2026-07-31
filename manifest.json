@@ -10,7 +10,7 @@
     "versions": [
       {
         "version": "1.2.0.3",
-        "changelog": "Release 1.2.0.3.",
+        "changelog": "Adds an optional \"Leaving Soon\" row to the home screen listing what is in The Chapel — off by default, and hidden while The Chapel is empty. The Chapel collection also stops telling viewers that a deletion deadline exists: nothing expires, and Last Rites remains a deliberate act by the server owner.",
         "targetAbi": "10.11.6.0",
         "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.2.0.3/JellyfinGraveyardAnalytics.zip",
         "checksum": "9c41c03e65495547298c127f6807a35e",

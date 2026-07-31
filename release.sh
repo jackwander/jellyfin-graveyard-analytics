@@ -194,6 +194,20 @@ if [ "$PUBLISH" -eq 1 ]; then
     exit 1
   fi
 
+  # Checked here rather than where the manifest is written, so a refusal leaves the tree
+  # exactly as it was found. 1.2.0.3 shipped to the catalogue with "Release 1.2.0.3." as its
+  # changelog because the old check ran after the stamp and only warned.
+  if [ "$CHANGELOG_SET" -eq 0 ]; then
+    EXISTING_LOG="$(jq -r --arg v "$VERSION" \
+      'first(.[0].versions[] | select(.version == $v) | .changelog) // ""' "$MANIFEST")"
+    if [ -z "$EXISTING_LOG" ] || [ "$EXISTING_LOG" = "Release $VERSION." ]; then
+      echo "❌ $VERSION has no changelog. It would reach the plugin catalogue as a" >&2
+      echo "   placeholder, which is the one line every user reads before updating." >&2
+      echo "   Pass --changelog \"…\", or run without --publish to draft it first." >&2
+      exit 1
+    fi
+  fi
+
   if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
     EXISTING="$(git rev-parse "refs/tags/$TAG")"
     if [ "$EXISTING" != "$(git rev-parse HEAD)" ]; then
@@ -286,7 +300,18 @@ if [ "$CHANGELOG_SET" -eq 0 ]; then
   CHANGELOG="$(jq -r --arg v "$VERSION" \
     'first(.[0].versions[] | select(.version == $v) | .changelog) // ""' "$MANIFEST")"
   if [ -z "$CHANGELOG" ]; then
+    # This used to write "Release $VERSION." and carry on with a warning, and that is exactly
+    # what shipped: 1.2.0.3 reached the plugin catalogue with a placeholder as its changelog,
+    # which is the one line every user reads before deciding to update. A warning on stderr is
+    # no defence when the output is this long.
+    if [ "$PUBLISH" -eq 1 ]; then
+      echo "❌ $VERSION is new and has no changelog. It would reach the catalogue as a" >&2
+      echo "   placeholder, which is what every user reads before updating." >&2
+      echo "   Pass --changelog \"…\" — or run without --publish to draft it first." >&2
+      exit 1
+    fi
     echo "⚠️  No --changelog given and $VERSION is new; writing a placeholder." >&2
+    echo "   --publish will refuse this, so replace it before releasing." >&2
     CHANGELOG="Release $VERSION."
   fi
 fi
