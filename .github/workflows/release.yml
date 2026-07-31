@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "10.0.200"   # exact: see global.json
 
       - name: Resolve the version
         id: version
@@ -60,34 +60,23 @@ jobs:
           [ "$yaml" = "$expected" ]   || { echo "::error::build.yaml says $yaml, tag says $expected"; fail=1; }
           exit $fail
 
-      - name: Test
-        run: >
-          dotnet test tests/GraveyardAnalytics.Tests/GraveyardAnalytics.Tests.csproj
-          -c Release -p:TreatWarningsAsErrors=true
+      # One implementation of "what a release contains", shared with the maintainer's machine.
+      # This step used to re-derive it: it published, staged and zipped with its own commands,
+      # and that copy was missing the mtime flattening release.sh does — so CI's archive could
+      # never match the checksum committed in the manifest, and v1.2.0.1 failed exactly there.
+      # release.sh --dry-run runs the suite, publishes, and writes the same normalized zip
+      # without touching manifest.json.
+      - name: Build the release artifact
+        run: ./release.sh "${{ steps.version.outputs.tag }}" --dry-run
 
-      - name: Publish
-        run: >
-          dotnet publish JellyfinGraveyardAnalytics/JellyfinGraveyardAnalyticsPlugin.csproj
-          -c Release -p:TreatWarningsAsErrors=true
-
-      - name: Stage and zip
+      - name: Checksum it
         id: package
         run: |
           set -euo pipefail
-          publish=JellyfinGraveyardAnalytics/bin/Release/net9.0/publish
-          dest="Releases/${{ steps.version.outputs.tag }}"
-          mkdir -p "$dest"
-
-          for file in Dapper.dll JellyfinGraveyardAnalyticsPlugin.dll; do
-            test -f "$publish/$file" || { echo "::error::$file missing from publish output"; exit 1; }
-            cp "$publish/$file" "$dest/"
-          done
-
-          ( cd "$dest" && zip -q JellyfinGraveyardAnalytics.zip Dapper.dll JellyfinGraveyardAnalyticsPlugin.dll )
-
-          checksum=$(md5sum "$dest/JellyfinGraveyardAnalytics.zip" | cut -d' ' -f1)
-          echo "checksum=$checksum" >> "$GITHUB_OUTPUT"
-          echo "path=$dest/JellyfinGraveyardAnalytics.zip" >> "$GITHUB_OUTPUT"
+          path="Releases/${{ steps.version.outputs.tag }}/JellyfinGraveyardAnalytics.zip"
+          test -f "$path" || { echo "::error::release.sh produced no zip at $path"; exit 1; }
+          echo "checksum=$(md5sum "$path" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "path=$path" >> "$GITHUB_OUTPUT"
 
       # The manifest is committed ahead of the tag, so this catches the case where the zip
       # CI built is not the zip the checksum was computed from — a mismatch every client
