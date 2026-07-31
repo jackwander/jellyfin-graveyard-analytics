@@ -62,6 +62,25 @@ namespace JellyfinGraveyardAnalytics.Controllers
         /// </summary>
         private const string ChapelCollectionName = "Leaving Soon: The Chapel";
 
+        /// <summary>
+        /// What viewers read on the Chapel collection. Written once, when Condemn creates the
+        /// collection; an admin who edits it afterwards keeps their version.
+        /// </summary>
+        /// <remarks>
+        /// The last sentence used to read "Once the grace period ends, these files will be
+        /// exorcised" — which tells a viewer a deadline exists somewhere they could look it up.
+        /// None does: Condemn records no timestamp and nothing expires, because Last Rites is a
+        /// deliberate act by the server owner. The grace period is the Undertaker's judgement,
+        /// so the text now says so. That matters more since the collection can be surfaced on
+        /// the home screen, where it is read by everyone rather than by whoever opens it.
+        /// </remarks>
+        private const string ChapelCollectionOverview =
+            "Welcome to The Chapel. The media gathered here has been condemned due to severe "
+            + "neglect. These titles have sat unwatched, taking up valuable server space, and are "
+            + "currently awaiting their Last Rites. If you wish to save a title from permanent "
+            + "deletion, you must watch it immediately. When the Undertaker judges that the grace "
+            + "period is over, these files will be exorcised from the server forever.";
+
         private readonly ILibraryManager _libraryManager;
         private readonly ILogger<GraveyardAnalyticsController> _logger;
         private readonly ICollectionManager _collectionManager;
@@ -239,7 +258,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
 
                         if (chapelCollection != null)
                         {
-                            chapelCollection.Overview = "Welcome to The Chapel. The media gathered here has been condemned due to severe neglect. These titles have sat unwatched, taking up valuable server space, and are currently awaiting their Last Rites. If you wish to save a title from permanent deletion, you must watch it immediately. Once the grace period ends, these files will be exorcised from the server forever.";
+                            chapelCollection.Overview = ChapelCollectionOverview;
 
                             var parent = _libraryManager.GetItemById(chapelCollection.ParentId) ?? chapelCollection.GetParent() ?? _libraryManager.RootFolder;
 
