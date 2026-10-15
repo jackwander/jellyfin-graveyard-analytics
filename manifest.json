@@ -9,6 +9,14 @@
     "imageUrl": "https://cdn.jsdelivr.net/gh/jackwander/jellyfin-graveyard-analytics@master/images/header.png",
     "versions": [
       {
+        "version": "1.2.0.6",
+        "changelog": "Adds Hidden viewers: tick users in Settings to leave them out of The Guestbook and The Sanctuary, so one person watching a single show on repeat no longer drowns out everyone else's stats. Their plays still count in The Morgue and The Chapel, so a show only they watch is never offered up for deletion as unwatched.",
+        "targetAbi": "10.11.6.0",
+        "sourceUrl": "https://github.com/jackwander/jellyfin-graveyard-analytics/releases/download/v1.2.0.6/JellyfinGraveyardAnalytics.zip",
+        "checksum": "cdc77e5c41575c8b02aa3709d077e06d",
+        "timestamp": "2026-10-15T15:54:13Z"
+      },
+      {
         "version": "1.2.0.5",
         "changelog": "Makes the optional \"Leaving Soon\" home screen row look native. It previously sat flush against the page edge while every other row was indented, with undersized posters and a stray link below the section. It now uses the web client's own section and card markup, so spacing, sizing, hover and focus match the rest of the home screen.",
         "targetAbi": "10.11.6.0",
