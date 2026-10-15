@@ -61,6 +61,7 @@ A complete, unfiltered séance into your server's traffic. Monitor every single 
 * **Resource Vampires:** If a user triggers a Transcode, the method is highlighted in aggressive **RED**, allowing you to spot server bottlenecks instantly.
 * **The Binge List:** A dynamic leaderboard showing your top 3 most active users in the selected timeframe.
 * **The Ghosts:** Instantly identifies Jellyfin users who haven't watched a single second of media during your selected timeframe.
+* **Hidden Viewers:** In Settings, tick any user whose viewing drowns out everyone else's — say, someone who watches one show on repeat. They are left out of The Guestbook and The Sanctuary. Their plays still count in The Morgue and The Chapel, so a show only they watch is never offered up for deletion as unwatched.
 
 ---
 

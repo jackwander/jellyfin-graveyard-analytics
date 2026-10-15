@@ -1,3 +1,4 @@
+using System.Linq;
 using MediaBrowser.Model.Plugins;
 
 namespace JellyfinGraveyardAnalytics.Configuration
@@ -27,6 +28,34 @@ namespace JellyfinGraveyardAnalytics.Configuration
         /// </para>
         /// </remarks>
         public bool EnableHomeSection { get; set; }
+
+        private string[] _hiddenUserIds = System.Array.Empty<string>();
+
+        /// <summary>
+        /// Jellyfin users whose playback is left out of what the dashboard *shows* — the
+        /// Sanctuary and the Guestbook — normalized to <c>Guid.ToString("N")</c>.
+        /// </summary>
+        /// <remarks>
+        /// Display only, deliberately (issue #1). The Morgue and the Chapel still count these
+        /// users' plays, because those lists feed Condemn and then deletion: hiding someone who
+        /// watches one series on repeat must not make that series read as unwatched and offer
+        /// it up for removal.
+        /// <para>
+        /// Normalized on write for the same reason the integers are clamped: the XML is
+        /// hand-editable and the UI posts whatever the client sends, and every consumer
+        /// compares against the dashless lowercase form. Anything that is not a GUID is dropped.
+        /// </para>
+        /// </remarks>
+        public string[] HiddenUserIds
+        {
+            get => _hiddenUserIds;
+            set => _hiddenUserIds = (value ?? System.Array.Empty<string>())
+                .Select(id => System.Guid.TryParse(id, out var guid) ? guid.ToString("N") : null)
+                .OfType<string>()
+                .Distinct(System.StringComparer.Ordinal)
+                .Order(System.StringComparer.Ordinal)
+                .ToArray();
+        }
 
         // Backing fields are clamped on write: the config XML is hand-editable and the
         // admin UI posts arbitrary numbers, so an out-of-range value must not reach a query.

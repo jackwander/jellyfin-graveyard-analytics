@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using JellyfinGraveyardAnalytics.Configuration;
+using MediaBrowser.Controller.Library;
 
 namespace JellyfinGraveyardAnalytics.Services
 {
@@ -28,6 +29,24 @@ namespace JellyfinGraveyardAnalytics.Services
         /// Morgue's floor gate (D1).
         /// </summary>
         public DateTime? HistoryFloorUtc { get; init; }
+
+        /// <summary>
+        /// The same aggregates without the configured hidden users, or null when nobody is
+        /// hidden. Read it through <see cref="Displayed"/>.
+        /// </summary>
+        public PlaybackStats? ExcludingHidden { get; init; }
+
+        /// <summary>
+        /// What the views that only display — the Sanctuary — read: the aggregates without
+        /// the hidden users, or this instance itself when nobody is hidden.
+        /// </summary>
+        /// <remarks>
+        /// A second set rather than a filter on the one set, because the Morgue and the Chapel
+        /// must keep reading the full one: they feed deletion, and a hidden user's favourite
+        /// series must not read as unwatched there (issue #1). Loaded and cached together, so
+        /// moving between those tabs cannot thrash the single-slot cache.
+        /// </remarks>
+        public PlaybackStats Displayed => ExcludingHidden ?? this;
     }
 
     /// <summary>
@@ -161,6 +180,7 @@ namespace JellyfinGraveyardAnalytics.Services
         public const int TracearrHistoryWeeks = 52;
 
         private readonly TracearrService _tracearrService;
+        private readonly IUserManager _userManager;
         private readonly Database.Repository _repository;
         private readonly IPluginConfigurationSource _configSource;
         private readonly ILogger<PlaybackStatsProvider> _logger;
@@ -178,8 +198,10 @@ namespace JellyfinGraveyardAnalytics.Services
             Database.Repository repository,
             IPluginConfigurationSource configSource,
             TtlCache<PlaybackStats> cache,
+            IUserManager userManager,
             ILogger<PlaybackStatsProvider> logger)
         {
+            _userManager = userManager;
             _tracearrService = tracearrService;
             _repository = repository;
             _configSource = configSource;
@@ -197,7 +219,8 @@ namespace JellyfinGraveyardAnalytics.Services
                 '|',
                 config.EnableTracearr ? "tracearr" : "local",
                 config.MinPlayDurationSeconds,
-                config.EnableTracearr ? config.TracearrUrl : string.Empty);
+                config.EnableTracearr ? config.TracearrUrl : string.Empty,
+                string.Join(',', config.HiddenUserIds));
 
             return _cache.GetAsync(signature, LoadAsync, cancellationToken);
         }
@@ -213,21 +236,14 @@ namespace JellyfinGraveyardAnalytics.Services
 
             if (config.EnableTracearr)
             {
-                var stats = await _tracearrService
-                    .GetTracearrPlaybackStatsAsync(TracearrHistoryWeeks, cancellationToken)
+                // Both sets come out of one walk of the history: it is paged HTTP, and
+                // walking it twice would double the slowest load this plugin has.
+                return await _tracearrService
+                    .GetTracearrPlaybackStatsAsync(
+                        TracearrHistoryWeeks,
+                        UserManagerCompat.UsernamesOf(_userManager, config.HiddenUserIds),
+                        cancellationToken)
                     .ConfigureAwait(false);
-
-                return new PlaybackStats
-                {
-                    PlayCounts = stats.playCounts,
-                    ItemViewers = stats.itemViewers,
-                    LastPlayedDates = stats.lastPlayedDates,
-                    PlayDurations = stats.playDurations,
-
-                    // The aggregate is bounded by the window we ask for, so that window is
-                    // the floor — there is nothing older for it to have seen.
-                    HistoryFloorUtc = DateTime.UtcNow.AddDays(-7 * TracearrHistoryWeeks)
-                };
             }
 
             var unavailable = _repository.PlaybackDataUnavailableReason();
@@ -237,6 +253,11 @@ namespace JellyfinGraveyardAnalytics.Services
             }
 
             var threshold = config.MinPlayDurationSeconds;
+            var hidden = config.HiddenUserIds;
+
+            // The floor stays the full history's on both sets: hiding a viewer changes what is
+            // shown, not how far back the database can see.
+            var floor = ReadHistoryFloor();
 
             return new PlaybackStats
             {
@@ -244,7 +265,17 @@ namespace JellyfinGraveyardAnalytics.Services
                 ItemViewers = _repository.GetItemViewers(threshold),
                 LastPlayedDates = _repository.GetItemLastPlayedDates(threshold),
                 PlayDurations = _repository.GetItemPlayDurations(threshold),
-                HistoryFloorUtc = ReadHistoryFloor()
+                HistoryFloorUtc = floor,
+                ExcludingHidden = hidden.Length == 0
+                    ? null
+                    : new PlaybackStats
+                    {
+                        PlayCounts = _repository.GetItemPlayCounts(threshold, hidden),
+                        ItemViewers = _repository.GetItemViewers(threshold, hidden),
+                        LastPlayedDates = _repository.GetItemLastPlayedDates(threshold, hidden),
+                        PlayDurations = _repository.GetItemPlayDurations(threshold, hidden),
+                        HistoryFloorUtc = floor
+                    }
             };
         }
 

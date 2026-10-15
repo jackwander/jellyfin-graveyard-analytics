@@ -50,6 +50,34 @@ namespace JellyfinGraveyardAnalytics.Services
             return Accessor(userManager);
         }
 
+        /// <summary>
+        /// Usernames of the given users, for matching against engines that know viewers by
+        /// name — Tracearr reports a <c>username</c>, never the Jellyfin id. Ids with no user
+        /// behind them are skipped. Case-insensitive, as the Guestbook's ghost match is.
+        /// </summary>
+        /// <param name="userManager">The server's user manager.</param>
+        /// <param name="userIds">Ids in <c>Guid.ToString("N")</c> form.</param>
+        /// <returns>The matching usernames.</returns>
+        public static HashSet<string> UsernamesOf(IUserManager userManager, IReadOnlyCollection<string> userIds)
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (userIds.Count == 0)
+            {
+                return names;
+            }
+
+            var wanted = new HashSet<string>(userIds, StringComparer.OrdinalIgnoreCase);
+            foreach (var user in AllUsers(userManager))
+            {
+                if (wanted.Contains(user.Id.ToString("N")))
+                {
+                    names.Add(user.Username);
+                }
+            }
+
+            return names;
+        }
+
         private static Func<IUserManager, IEnumerable<User>> Resolve()
         {
             // 10.11.9 and later.

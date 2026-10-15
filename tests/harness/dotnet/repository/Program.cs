@@ -409,8 +409,14 @@ return failed == 0 ? 0 : 1;
 
 object New(string dataPath) => Activator.CreateInstance(repoType, new HarnessPaths(dataPath))!;
 
+// Optional parameters the caller leaves off are passed as Type.Missing, so the same call
+// reaches an assembly from before they were added and one from after.
 object? Call(object instance, string method, params object?[] args)
-    => repoType.GetMethod(method)!.Invoke(instance, args);
+{
+    var info = repoType.GetMethod(method)!;
+    var padded = args.Concat(Enumerable.Repeat(Type.Missing, info.GetParameters().Length - args.Length));
+    return info.Invoke(instance, padded.ToArray());
+}
 
 object? Get(object instance, string property)
     => instance.GetType().GetProperty(property)!.GetValue(instance);

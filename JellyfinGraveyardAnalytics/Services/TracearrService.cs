@@ -187,6 +187,10 @@ namespace JellyfinGraveyardAnalytics.Services
         /// so the same timeframe cannot serialize a different amount of JSON depending on
         /// which engine is enabled.
         /// </param>
+        /// <param name="hiddenUsernames">
+        /// Viewers left out entirely (issue #1). Skipped before the row cap is counted, as the
+        /// local engine filters them in SQL, so a hidden viewer cannot use up the cap.
+        /// </param>
         /// <remarks>
         /// Ghosts are left empty here: they are Jellyfin users with no activity, and Tracearr
         /// knows who watched rather than who has an account. The controller fills them.
@@ -195,6 +199,7 @@ namespace JellyfinGraveyardAnalytics.Services
             string endDate,
             int weeksBack,
             int rowLimit,
+            IReadOnlySet<string> hiddenUsernames,
             CancellationToken cancellationToken = default)
         {
             var windowEnd = ParseEndDate(endDate);
@@ -231,13 +236,18 @@ namespace JellyfinGraveyardAnalytics.Services
                 {
                     foreach (var row in dataArray.EnumerateArray())
                     {
+                        var session = MapSession(row, out var visitor, out var durationSeconds);
+                        if (hiddenUsernames.Contains(visitor))
+                        {
+                            continue;
+                        }
+
                         if (sessions.Count >= rowLimit)
                         {
                             truncated = true;
                             break;
                         }
 
-                        var session = MapSession(row, out var visitor, out var durationSeconds);
                         sessions.Add(session);
 
                         watchTimes.TryGetValue(visitor, out var running);
@@ -405,14 +415,15 @@ namespace JellyfinGraveyardAnalytics.Services
         }
 
         /// <summary>
-        /// The four media-tab aggregates, built from Tracearr history.
+        /// The four media-tab aggregates, built from Tracearr history — the full set, plus the
+        /// set without <paramref name="hiddenUsernames"/> when any are given (issue #1).
         /// </summary>
         /// <remarks>
         /// <paramref name="weeksBack"/> is converted to a real <c>startDate</c>/<c>endDate</c>
         /// window — Tracearr has no <c>weeksBack</c> parameter and silently ignored the one
         /// this used to send.
         /// </remarks>
-        public async Task<(Dictionary<string, int> playCounts, Dictionary<string, HashSet<string>> itemViewers, Dictionary<string, DateTime> lastPlayedDates, Dictionary<string, long> playDurations)> GetTracearrPlaybackStatsAsync(int weeksBack = 52, CancellationToken cancellationToken = default)
+        public async Task<PlaybackStats> GetTracearrPlaybackStatsAsync(int weeksBack, IReadOnlySet<string> hiddenUsernames, CancellationToken cancellationToken = default)
         {
             var windowEnd = DateTime.UtcNow.Date;
             var windowStart = windowEnd.AddDays(-7 * Math.Max(weeksBack, 1));
@@ -422,15 +433,12 @@ namespace JellyfinGraveyardAnalytics.Services
                 windowStart,
                 windowEnd);
 
-            var playCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var itemViewers = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-            var lastPlayedDates = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
-
-            // Fourth aggregate, "Time Played". The Chapel and Sanctuary previously read this
-            // from the local Playback Reporting database even when Tracearr was the engine,
-            // so a single row mixed two sources — and with no local database present those
-            // two tabs failed outright.
-            var playDurations = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            // Includes "Time Played". The Chapel and Sanctuary previously read that from the
+            // local Playback Reporting database even when Tracearr was the engine, so a single
+            // row mixed two sources — and with no local database present those two tabs
+            // failed outright.
+            var all = new StatsTally();
+            var shown = hiddenUsernames.Count > 0 ? new StatsTally() : null;
 
             // D2's floor. The local engine pushes MinPlayDurationSeconds into all three of
             // these aggregates at the SQL level; Tracearr has no equivalent filter, so it is
@@ -481,37 +489,26 @@ namespace JellyfinGraveyardAnalytics.Services
                             continue;
                         }
 
-                        // 2. Tally Play Counts
-                        if (!playCounts.ContainsKey(itemId)) playCounts[itemId] = 0;
-                        playCounts[itemId]++;
-
-                        // 2b. Tally Time Played
-                        playDurations.TryGetValue(itemId, out var runningSeconds);
-                        playDurations[itemId] = runningSeconds + playSeconds;
-
-                        // 3. Tally Unique Viewers
                         string username = "Unknown";
                         if (item.TryGetProperty("user", out var userObj) && userObj.TryGetProperty("username", out var userProp))
                         {
                             username = userProp.GetString() ?? "Unknown";
                         }
-                        if (!itemViewers.ContainsKey(itemId)) itemViewers[itemId] = new HashSet<string>();
-                        itemViewers[itemId].Add(username);
 
-                        // 4. Track Last Played Date
-                        if (item.TryGetProperty("startedAt", out var startedProp) && startedProp.ValueKind == JsonValueKind.String)
+                        // Through the same parse as everything else here (finding 30). A bare
+                        // TryParse honoured the trailing Z by converting to *local* time, so
+                        // this engine put a Local value in the field the local engine fills
+                        // with UTC — same column, two meanings, differing by the offset.
+                        DateTime? started = item.TryGetProperty("startedAt", out var startedProp)
+                            && startedProp.ValueKind == JsonValueKind.String
+                            && TryParseUtc(startedProp.GetString(), out var dt)
+                            ? dt
+                            : null;
+
+                        all.Add(itemId, username, playSeconds, started);
+                        if (shown is not null && !hiddenUsernames.Contains(username))
                         {
-                            // Through the same parse as everything else here (finding 30). A bare
-                            // TryParse honoured the trailing Z by converting to *local* time, so
-                            // this engine put a Local value in the field the local engine fills
-                            // with UTC — same column, two meanings, differing by the offset.
-                            if (TryParseUtc(startedProp.GetString(), out var dt))
-                            {
-                                if (!lastPlayedDates.TryGetValue(itemId, out var existing) || dt > existing)
-                                {
-                                    lastPlayedDates[itemId] = dt;
-                                }
-                            }
+                            shown.Add(itemId, username, playSeconds, started);
                         }
                     }
                 }
@@ -549,7 +546,56 @@ namespace JellyfinGraveyardAnalytics.Services
                     minPlaySeconds);
             }
 
-            return (playCounts, itemViewers, lastPlayedDates, playDurations);
+            // The aggregate is bounded by the window we ask for, so that window is the floor —
+            // there is nothing older for it to have seen. The same on both sets: hiding a
+            // viewer changes what is shown, not how far back the history reaches.
+            var floor = DateTime.UtcNow.AddDays(-7 * weeksBack);
+
+            return all.ToStats(floor, shown?.ToStats(floor, null));
+        }
+
+        /// <summary>
+        /// One set of the four aggregates being accumulated, one session at a time.
+        /// </summary>
+        private sealed class StatsTally
+        {
+            private readonly Dictionary<string, int> _playCounts = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, HashSet<string>> _itemViewers = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, DateTime> _lastPlayedDates = new(StringComparer.OrdinalIgnoreCase);
+            private readonly Dictionary<string, long> _playDurations = new(StringComparer.OrdinalIgnoreCase);
+
+            public void Add(string itemId, string username, long playSeconds, DateTime? started)
+            {
+                _playCounts.TryGetValue(itemId, out var plays);
+                _playCounts[itemId] = plays + 1;
+
+                _playDurations.TryGetValue(itemId, out var runningSeconds);
+                _playDurations[itemId] = runningSeconds + playSeconds;
+
+                if (!_itemViewers.TryGetValue(itemId, out var viewers))
+                {
+                    viewers = new HashSet<string>();
+                    _itemViewers[itemId] = viewers;
+                }
+
+                viewers.Add(username);
+
+                if (started is DateTime at
+                    && (!_lastPlayedDates.TryGetValue(itemId, out var existing) || at > existing))
+                {
+                    _lastPlayedDates[itemId] = at;
+                }
+            }
+
+            public PlaybackStats ToStats(DateTime floor, PlaybackStats? excludingHidden) => new()
+            {
+                PlayCounts = _playCounts,
+                ItemViewers = _itemViewers,
+                LastPlayedDates = _lastPlayedDates,
+                PlayDurations = _playDurations,
+                HistoryFloorUtc = floor,
+                ExcludingHidden = excludingHidden
+            };
         }
 
         /// <summary>

@@ -111,7 +111,7 @@ namespace JellyfinGraveyardAnalytics.Database
                 : null;
         }
 
-        public Dictionary<string, int> GetItemPlayCounts(int minPlayDurationSeconds)
+        public Dictionary<string, int> GetItemPlayCounts(int minPlayDurationSeconds, IReadOnlyCollection<string>? hiddenUserIds = null)
         {
             using var connection = new SqliteConnection(_playbackDbConn);
 
@@ -120,8 +120,9 @@ namespace JellyfinGraveyardAnalytics.Database
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL
                 AND PlayDuration >= @MinPlayDuration
+                " + HiddenUserFilter(hiddenUserIds) + @"
                 GROUP BY ItemId
-            ", new { MinPlayDuration = minPlayDurationSeconds });
+            ", new { MinPlayDuration = minPlayDurationSeconds, Hidden = hiddenUserIds });
 
             var dict = new Dictionary<string, int>();
 
@@ -137,7 +138,7 @@ namespace JellyfinGraveyardAnalytics.Database
             return dict;
         }
 
-        public Dictionary<string, HashSet<string>> GetItemViewers(int minPlayDurationSeconds)
+        public Dictionary<string, HashSet<string>> GetItemViewers(int minPlayDurationSeconds, IReadOnlyCollection<string>? hiddenUserIds = null)
         {
             using var connection = new SqliteConnection(_playbackDbConn);
 
@@ -146,7 +147,8 @@ namespace JellyfinGraveyardAnalytics.Database
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL AND UserId IS NOT NULL
                 AND PlayDuration >= @MinPlayDuration
-            ", new { MinPlayDuration = minPlayDurationSeconds });
+                " + HiddenUserFilter(hiddenUserIds) + @"
+            ", new { MinPlayDuration = minPlayDurationSeconds, Hidden = hiddenUserIds });
 
             var viewerMap = new Dictionary<string, HashSet<string>>();
 
@@ -171,7 +173,7 @@ namespace JellyfinGraveyardAnalytics.Database
             return viewerMap;
         }
 
-        public Dictionary<string, DateTime> GetItemLastPlayedDates(int minPlayDurationSeconds)
+        public Dictionary<string, DateTime> GetItemLastPlayedDates(int minPlayDurationSeconds, IReadOnlyCollection<string>? hiddenUserIds = null)
         {
             using var connection = new SqliteConnection(_playbackDbConn);
 
@@ -182,8 +184,9 @@ namespace JellyfinGraveyardAnalytics.Database
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL
                 AND PlayDuration >= @MinPlayDuration
+                " + HiddenUserFilter(hiddenUserIds) + @"
                 GROUP BY ItemId
-            ", new { MinPlayDuration = minPlayDurationSeconds });
+            ", new { MinPlayDuration = minPlayDurationSeconds, Hidden = hiddenUserIds });
 
             var dict = new Dictionary<string, DateTime>();
 
@@ -200,7 +203,7 @@ namespace JellyfinGraveyardAnalytics.Database
             return dict;
         }
 
-        public Dictionary<string, long> GetItemPlayDurations(int minPlayDurationSeconds)
+        public Dictionary<string, long> GetItemPlayDurations(int minPlayDurationSeconds, IReadOnlyCollection<string>? hiddenUserIds = null)
         {
             using var connection = new SqliteConnection(_playbackDbConn);
 
@@ -209,8 +212,9 @@ namespace JellyfinGraveyardAnalytics.Database
                 FROM PlaybackActivity
                 WHERE ItemId IS NOT NULL
                 AND PlayDuration >= @MinPlayDuration
+                " + HiddenUserFilter(hiddenUserIds) + @"
                 GROUP BY ItemId
-            ", new { MinPlayDuration = minPlayDurationSeconds });
+            ", new { MinPlayDuration = minPlayDurationSeconds, Hidden = hiddenUserIds });
 
             var dict = new Dictionary<string, long>();
 
@@ -273,7 +277,8 @@ namespace JellyfinGraveyardAnalytics.Database
         /// presenting a partial window as complete.
         /// </summary>
         public (List<PlaybackActivityRow> Rows, bool Truncated) GetRawPlaybackActivity(
-            DateTime startDate, DateTime endDate, int rowLimit)
+            DateTime startDate, DateTime endDate, int rowLimit,
+            IReadOnlyCollection<string>? hiddenUserIds = null)
         {
             using var connection = new SqliteConnection(_playbackDbConn);
 
@@ -290,13 +295,15 @@ namespace JellyfinGraveyardAnalytics.Database
                     PlayDuration
                 FROM PlaybackActivity
                 WHERE DateCreated >= @Start AND DateCreated <= @End
+                " + HiddenUserFilter(hiddenUserIds) + @"
                 ORDER BY DateCreated DESC
                 LIMIT @Limit",
                 new
                 {
                     Start = FormatSqliteUtc(startDate),
                     End = FormatSqliteUtc(endDate),
-                    Limit = rowLimit + 1
+                    Limit = rowLimit + 1,
+                    Hidden = hiddenUserIds
                 }).ToList();
 
             if (rows.Count > rowLimit)
@@ -307,6 +314,22 @@ namespace JellyfinGraveyardAnalytics.Database
 
             return (rows, false);
         }
+
+        /// <summary>
+        /// The clause that leaves hidden users' sessions out, or nothing when none are hidden.
+        /// Expects the ids dashless and lowercase, as the configuration normalizes them.
+        /// </summary>
+        /// <remarks>
+        /// In SQL rather than after the read, so the Guestbook's row cap counts only rows it
+        /// will show — otherwise one prolific hidden viewer could fill the cap with sessions
+        /// that are then thrown away. The stored id is normalized the same way before the
+        /// comparison, and a NULL id is kept explicitly: <c>NULL NOT IN (…)</c> is NULL, which
+        /// a WHERE treats as false, so without it an anonymous session would vanish too.
+        /// </remarks>
+        private static string HiddenUserFilter(IReadOnlyCollection<string>? hiddenUserIds)
+            => hiddenUserIds is { Count: > 0 }
+                ? "AND (UserId IS NULL OR LOWER(REPLACE(UserId, '-', '')) NOT IN @Hidden)"
+                : string.Empty;
 
         /// <summary>
         /// Strips dashes so the key matches the <c>Guid.ToString("N")</c> form every consumer

@@ -75,6 +75,13 @@
                             </div>
                         </div>
 
+                        <div class="gy-toggle gy-toggle--stacked">
+                            <span class="gy-toggle-label">Hidden viewers</span>
+                            <span class="gy-hint">Leave these users out of The Sanctuary and The Guestbook — for someone who watches one show on repeat and drowns out everyone else.</span>
+                            <span class="gy-hint gy-hint--italic">Their plays still count in The Morgue and The Chapel, so a show only they watch is never offered up for deletion as unwatched.</span>
+                            <div id="hiddenUsers" class="gy-userlist"></div>
+                        </div>
+
                         <button type="button" id="saveConfig" class="gy-btn gy-btn--save">Save Configuration</button>
                         <span id="saveConfirmation" class="gy-saved" hidden>Saved successfully!</span>
                         <span id="saveFailure" class="gy-failed" hidden></span>
@@ -344,6 +351,10 @@
             margin: 0;
         }
 
+        #GraveyardAnalyticsPage .gy-toggle--stacked { flex-direction: column; align-items: flex-start; gap: 4px; }
+        #GraveyardAnalyticsPage .gy-userlist { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 10px; }
+        #GraveyardAnalyticsPage .gy-userlist label { display: flex; align-items: center; color: #ddd; cursor: pointer; }
+
         #GraveyardAnalyticsPage .gy-subfields {
             padding-left: 20px;
             border-left: 2px solid #444;
@@ -546,6 +557,7 @@
                 settings: $('settingsContainer'),
                 tracearr: $('tracearrContainer'),
                 tracearrFields: $('tracearrFields'),
+                hiddenUsers: $('hiddenUsers'),
                 tracearrTab: $('tabTracearr'),
                 mediaFilters: $('mediaFilters'),
                 barelyFilter: $('barelyTouchedFilter'),
@@ -1106,12 +1118,36 @@
                         $('TracearrApiKey').value = settings.TracearrApiKey || '';
                         $('EnableHomeSection').checked = !!settings.EnableHomeSection;
                         applyTracearrState(!!settings.EnableTracearr);
+                        return ApiClient.getUsers().then(function (users) {
+                            renderHiddenUsers(users || [], settings.HiddenUserIds || []);
+                        });
                     })
                     .catch(function (error) {
                         return describeFailure(error).then(function (message) {
                             showSaveFailure('The configuration could not be loaded. ' + message);
                         });
                     });
+            }
+
+            // Ids compared dashless and lowercase: the server stores them that way, and the
+            // client has handed out both forms across versions.
+            function normalizeId(id) {
+                return String(id || '').replace(/-/g, '').toLowerCase();
+            }
+
+            function renderHiddenUsers(users, hiddenIds) {
+                var hidden = hiddenIds.map(normalizeId);
+                clear(els.hiddenUsers);
+                users.forEach(function (user) {
+                    var label = tag('label');
+                    var box = tag('input', 'gy-checkbox');
+                    box.type = 'checkbox';
+                    box.value = user.Id;
+                    box.checked = hidden.indexOf(normalizeId(user.Id)) !== -1;
+                    label.appendChild(box);
+                    label.appendChild(document.createTextNode(user.Name || 'Unnamed user'));
+                    els.hiddenUsers.appendChild(label);
+                });
             }
 
             function showSaveFailure(message) {
@@ -1125,6 +1161,12 @@
                 var url = $('TracearrUrl').value;
                 var key = $('TracearrApiKey').value;
                 var homeSection = $('EnableHomeSection').checked;
+                // No boxes means the user list never loaded. Saving an empty list then would
+                // silently un-hide everyone, so the stored value is left alone instead.
+                var usersShown = els.hiddenUsers.querySelector('input') !== null;
+                var hiddenUserIds = Array.prototype.map.call(
+                    els.hiddenUsers.querySelectorAll('input:checked'),
+                    function (box) { return box.value; });
 
                 els.saveFailed.hidden = true;
 
@@ -1135,6 +1177,7 @@
                         settings.TracearrUrl = url;
                         settings.TracearrApiKey = key;
                         settings.EnableHomeSection = homeSection;
+                        if (usersShown) settings.HiddenUserIds = hiddenUserIds;
                         return ApiClient.updatePluginConfiguration(PLUGIN_ID, settings);
                     })
                     .then(function () {

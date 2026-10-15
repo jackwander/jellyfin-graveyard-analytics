@@ -101,7 +101,7 @@ public sealed class PlaybackDatabase : IDisposable
     /// </summary>
     public void AddSession(
         DateTime utc,
-        string userId,
+        string? userId,
         string itemId,
         long playDurationSeconds,
         string itemName = "A Film",
@@ -120,7 +120,7 @@ public sealed class PlaybackDatabase : IDisposable
         // The stored format: naive UTC, no zone marker. Writing an ISO string with a Z here
         // would make the repository's parse look correct when it is not.
         insert.Parameters.AddWithValue("$date", utc.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture));
-        insert.Parameters.AddWithValue("$user", userId);
+        insert.Parameters.AddWithValue("$user", (object?)userId ?? DBNull.Value);
         insert.Parameters.AddWithValue("$item", itemId);
         insert.Parameters.AddWithValue("$type", itemType);
         insert.Parameters.AddWithValue("$name", itemName);

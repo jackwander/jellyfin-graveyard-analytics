@@ -49,6 +49,7 @@ node actions.test.mjs    # 24 checks
 node dates.test.mjs      #  6 checks
 node tabs.test.mjs       # 32 checks
 node home.test.mjs       # 27 checks
+node settings.test.mjs   #  7 checks — hidden-viewers checklist (issue #1)
 ```
 
 Loads `WebUI/dashboard.html`, dispatches `viewshow`, then calls the real

@@ -562,8 +562,10 @@ namespace JellyfinGraveyardAnalytics.Controllers
                 {
                     try
                     {
+                        var hidden = Services.UserManagerCompat.UsernamesOf(_userManager, config.HiddenUserIds);
+
                         var tracearrData = await _tracearrService
-                            .GetVisitorHistoryAsync(endDate, weeksBack, config.GuestbookRowLimit, cancellationToken)
+                            .GetVisitorHistoryAsync(endDate, weeksBack, config.GuestbookRowLimit, hidden, cancellationToken)
                             .ConfigureAwait(false);
 
                         // Ghosts are Jellyfin users with nothing in the window, so they can
@@ -576,7 +578,7 @@ namespace JellyfinGraveyardAnalytics.Controllers
 
                         tracearrData.Ghosts = Services.UserManagerCompat.AllUsers(_userManager)
                             .Select(u => u.Username)
-                            .Where(name => !active.Contains(name))
+                            .Where(name => !active.Contains(name) && !hidden.Contains(name))
                             .ToList();
 
                         return Ok(tracearrData);

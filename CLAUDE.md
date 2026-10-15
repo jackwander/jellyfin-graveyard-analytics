@@ -69,12 +69,12 @@ store it in the repo.
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
 installed, so the plugin can be built but **not loaded** here.
 
-**The test suite is `tests/GraveyardAnalytics.Tests` (91 tests, `net10.0`).** Added
+**The test suite is `tests/GraveyardAnalytics.Tests` (95 tests, `net10.0`).** Added
 in Phase 6, run in CI on every push. It covers `FormatBytes`, D2's play threshold
 over a real SQLite file, D1's floor gate through the real `GetLeastWatchedItems`,
 the configuration clamps, finding 30's parse and its serialized form and the
 `JellyfinTimestamps.AsUtc` boundary, the missing-`PlaybackActivity`-table guard, the
-`TtlCache`, and the embedded Chapel artwork. Its non-vacuity was checked by
+`TtlCache`, the embedded Chapel artwork, and the hidden-viewers split (issue #1). Its non-vacuity was checked by
 mutating the source, not asserted — if you add to it, do the same.
 
 `tests/harness/` is **separate and still current**: throwaway-grade evidence for
@@ -83,8 +83,8 @@ mutating the source, not asserted — if you add to it, do the same.
 `tests/harness/README.md` before trusting or extending them — the webhook probes
 are a *mirror* of controller logic that must be updated alongside it.
 
-Expected results, so a regression is obvious: suite **91**; dashboard `xss` 32,
-`actions` 24, `dates` 6, `tabs` 32, `home` 27; dotnet `abi` 5 (per ABI), `repository` 27,
+Expected results, so a regression is obvious: suite **95**; dashboard `xss` 32,
+`actions` 24, `dates` 6, `tabs` 32, `home` 27, `settings` 7; dotnet `abi` 5 (per ABI), `repository` 27,
 `di` 19, `ttlcache` 12, `visitormap` 21; `formatbytes` and `probes` print tables
 rather than counts.
 
@@ -135,6 +135,11 @@ the native `runtimes/` tree.
   `Repository.TryParseStoredUtc`, `TracearrService.TryParseUtc` — never a bare
   `DateTime.TryParse`: it yields `Unspecified` for a zoneless string and `Local` for
   one with an offset, and both serialize into a date the browser reads wrongly.
+- **Hidden viewers** (`HiddenUserIds`, issue #1) are a *display* filter. The Sanctuary
+  and the Guestbook leave them out; the Morgue and the Chapel must not, because they feed
+  deletion and a hidden user's favourite series would read as unwatched. That split is
+  `PlaybackStats.Displayed` — only `GetLivingItems` reads it. Tracearr knows viewers by
+  username, so ids are mapped through `UserManagerCompat.UsernamesOf`.
 - `[Chapel]` is the tag marking condemned items; the paired public collection is
   `"Leaving Soon: The Chapel"` — the constant `ChapelCollectionName`, and the
   lookup is `FindChapelCollection()`. Do not spell either out again. Its artwork is

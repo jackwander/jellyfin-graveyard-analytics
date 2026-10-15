@@ -516,6 +516,11 @@ namespace JellyfinGraveyardAnalytics.Services
             int limit,
             PlaybackStats stats)
         {
+            // The one media tab that reads the display set: it ranks what is popular and
+            // decides nothing, so a hidden user's plays are left out (issue #1). The Morgue
+            // and the Chapel keep the full set — see PlaybackStats.Displayed.
+            stats = stats.Displayed;
+
             var playCounts = stats.PlayCounts;
             var itemViewers = stats.ItemViewers;
             var lastPlayedDates = stats.LastPlayedDates;
@@ -644,10 +649,15 @@ namespace JellyfinGraveyardAnalytics.Services
             var activeUserIds = new HashSet<string>();
             var userWatchTimes = new Dictionary<string, long>();
 
-            var rowLimit = _configSource.Current.GuestbookRowLimit;
+            var config = _configSource.Current;
+            var rowLimit = config.GuestbookRowLimit;
+
+            // Hidden users (issue #1) are gone from the sessions, the leaderboard and the
+            // ghosts alike — listing them as a ghost would be its own wrong statement.
+            var hidden = new HashSet<string>(config.HiddenUserIds, StringComparer.OrdinalIgnoreCase);
 
             var (rawData, truncated) = _repository.GetRawPlaybackActivity(
-                startDate, endDate, rowLimit);
+                startDate, endDate, rowLimit, config.HiddenUserIds);
 
             var sessions = new List<JellyfinGraveyardAnalytics.Models.VisitorSession>();
 
@@ -694,7 +704,7 @@ namespace JellyfinGraveyardAnalytics.Services
             }
 
             var ghosts = allUsers
-                .Where(u => !activeUserIds.Contains(u.Id.ToString("N")))
+                .Where(u => !activeUserIds.Contains(u.Id.ToString("N")) && !hidden.Contains(u.Id.ToString("N")))
                 .Select(u => u.Username)
                 .ToList();
 
