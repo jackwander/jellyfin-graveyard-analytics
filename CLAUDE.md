@@ -69,7 +69,7 @@ store it in the repo.
 No Jellyfin server is available locally, and only the dotnet 10.0.x runtime is
 installed, so the plugin can be built but **not loaded** here.
 
-**The test suite is `tests/GraveyardAnalytics.Tests` (95 tests, `net10.0`).** Added
+**The test suite is `tests/GraveyardAnalytics.Tests` (96 tests, `net10.0`).** Added
 in Phase 6, run in CI on every push. It covers `FormatBytes`, D2's play threshold
 over a real SQLite file, D1's floor gate through the real `GetLeastWatchedItems`,
 the configuration clamps, finding 30's parse and its serialized form and the
@@ -83,7 +83,7 @@ mutating the source, not asserted — if you add to it, do the same.
 `tests/harness/README.md` before trusting or extending them — the webhook probes
 are a *mirror* of controller logic that must be updated alongside it.
 
-Expected results, so a regression is obvious: suite **95**; dashboard `xss` 32,
+Expected results, so a regression is obvious: suite **96**; dashboard `xss` 32,
 `actions` 24, `dates` 6, `tabs` 32, `home` 27, `settings` 7; dotnet `abi` 5 (per ABI), `repository` 27,
 `di` 19, `ttlcache` 12, `visitormap` 21; `formatbytes` and `probes` print tables
 rather than counts.
@@ -171,6 +171,12 @@ the native `runtimes/` tree.
   nothing when the Chapel is empty. Do not adopt the community plugins' approach of
   Harmony-patching `Startup.Configure` or splicing the minified bundle — that is why
   they need one build per Jellyfin patch and why a mismatch has taken servers down.
+- **`manifest.json`'s `name` must equal `Plugin.Name`** ("Graveyard Analytics";
+  `ManifestNameTests` guards it). Jellyfin writes the catalogue name into `meta.json` on
+  install and catalogue refresh, and `Plugin.Name` on startup, and only retires an old
+  copy whose name matches the new one. While they differed, 1.2.0.5 → 1.2.0.6 left both
+  copies loaded on a live server and every route failed as ambiguous. The name is read from
+  the catalogue, so a change to it ships on push, not on release.
 - Release flow is `./release.sh vX.X.X.X --changelog "…" --publish`. It runs the
   suite, stamps the version into the csproj and `build.yaml`, publishes, zips,
   patches `manifest.json` (checksum + UTC timestamp), then commits those three

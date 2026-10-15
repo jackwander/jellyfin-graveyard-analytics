@@ -1,7 +1,7 @@
 [
   {
     "guid": "8f1c5c1b-7f1e-4b6c-9a2e-3d4c9f7a6e21",
-    "name": "Jellyfin Graveyard Analytics",
+    "name": "Graveyard Analytics",
     "description": "Manage your server's afterlife. Identify lifeless media, condemn dead weight to The Chapel, and track your active Visitors.",
     "overview": "Advanced storage reclamation and user analytics.",
     "owner": "jackwander",
